@@ -1,0 +1,19 @@
+{
+  "name": "pi-code-review-root",
+  "private": true,
+  "version": "0.0.0",
+  "description": "Pi extension that opens a local web review UI for jj/git diffs.",
+  "scripts": {
+    "build": "pnpm --filter web build",
+    "dev": "pnpm --filter web dev",
+    "test": "pnpm -r --workspace-concurrency=1 run test",
+    "typecheck": "pnpm -r run typecheck"
+  },
+  "packageManager": "pnpm@11.1.1",
+  "devDependencies": {
+    "typescript": "^5.6.0"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": ["esbuild"]
+  }
+}

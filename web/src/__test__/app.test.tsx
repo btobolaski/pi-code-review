@@ -9,7 +9,11 @@ import { afterEach, describe, it } from "node:test";
 
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/preact";
 
-import { App } from "../App";
+import {
+  App,
+  TERMINAL_AUTO_CLOSE_DELAY_MS,
+  scheduleTerminalAutoClose,
+} from "../App";
 import type { DiffPayload, SubmitPayload } from "../../../extension/src/types";
 import { installFetchStub, type FetchCall } from "./fetch-stub";
 
@@ -142,7 +146,7 @@ afterEach(() => {
 });
 
 function defaultResponder(
-  options: { diff?: DiffPayload; onSubmit?: (call: FetchCall) => Response } = {},
+  options: { diff?: DiffPayload; onSubmit?: (call: FetchCall) => Response | Promise<Response> } = {},
 ): Stub {
   return installFetchStub((call) => {
     if (call.url === "/api/diff") {
@@ -159,6 +163,20 @@ function defaultResponder(
     }
     return new Response("not found", { status: 404 });
   });
+}
+
+function createDeferredResponse(): { promise: Promise<Response>; resolve: () => void } {
+  let resolver: ((response: Response) => void) | null = null;
+  const promise = new Promise<Response>((resolve) => {
+    resolver = resolve;
+  });
+  return {
+    promise,
+    resolve: () => {
+      if (!resolver) throw new Error("expected deferred response resolver");
+      resolver(new Response("{}", { status: 200 }));
+    },
+  };
 }
 
 class FakeIntersectionObserver {
@@ -229,6 +247,41 @@ describe("App", () => {
     assert.ok(screen.getByText(/Loading diff/i));
     await waitFor(() => screen.getByRole("button", { name: /Comment on this file/i }));
     assert.ok(screen.getByText("No comments yet"));
+  });
+
+  it("schedules terminal auto-close for 3 seconds and clears it on cleanup", () => {
+    let closeCalls = 0;
+    let clearedId: ReturnType<typeof window.setTimeout> | null = null;
+    let scheduledDelayMs: number | undefined;
+    let scheduledCallback: (() => void) | undefined;
+
+    const schedule = ((handler: TimerHandler, timeout?: number) => {
+      assert.equal(typeof handler, "function");
+      scheduledCallback = handler as () => void;
+      scheduledDelayMs = timeout;
+      return 7;
+    }) as typeof window.setTimeout;
+    const cancel = ((timeoutId?: ReturnType<typeof window.setTimeout>) => {
+      if (timeoutId !== undefined) clearedId = timeoutId;
+    }) as typeof window.clearTimeout;
+
+    const cleanupAutoClose = scheduleTerminalAutoClose(
+      () => {
+        closeCalls += 1;
+      },
+      schedule,
+      cancel,
+    );
+
+    assert.equal(scheduledDelayMs, TERMINAL_AUTO_CLOSE_DELAY_MS);
+    assert.equal(closeCalls, 0);
+    assert.ok(scheduledCallback);
+
+    scheduledCallback();
+    assert.equal(closeCalls, 1);
+
+    cleanupAutoClose();
+    assert.equal(clearedId, 7);
   });
 
   it("renders the sidebar as a directory tree with status glyphs", async () => {
@@ -598,7 +651,7 @@ describe("App", () => {
     await waitFor(() => assert.ok(screen.getByText(/GET \/api\/diff -> 500/)));
   });
 
-  it("submits a file-level comment and shows the submitted terminal screen", async () => {
+  it("submits a file-level comment and shows the submitted auto-close screen", async () => {
     stub = defaultResponder();
     render(<App />);
     await waitFor(() => screen.getByRole("button", { name: /Comment on this file/i }));
@@ -610,7 +663,6 @@ describe("App", () => {
     fireEvent.input(textarea, { target: { value: "needs more tests" } });
     fireEvent.click(screen.getByRole("button", { name: /^Save$/ }));
 
-    // The comment count in the submit bar should update synchronously after save.
     await waitFor(() => screen.getByText("1 comment"));
     assert.equal(
       screen.getByRole("button", { name: "a.ts modified 1 comment" }).querySelector(
@@ -622,7 +674,10 @@ describe("App", () => {
     fireEvent.click(screen.getByRole("button", { name: /Submit review/i }));
 
     await waitFor(() =>
-      assert.ok(screen.getByText(/Review sent to pi/i), "expected submitted message"),
+      assert.ok(
+        screen.getByText(/Review sent to pi\. This tab will close automatically in 3 seconds/i),
+        "expected submitted message",
+      ),
     );
 
     const submits = stub.calls.filter((c) => c.url === "/api/submit");
@@ -653,7 +708,6 @@ describe("App", () => {
     await waitFor(() => screen.getByText(/Review sent to pi/i));
     const submits = stub.calls.filter((c) => c.url === "/api/submit");
     const body = JSON.parse((submits[0]?.init?.body as string) ?? "") as SubmitPayload;
-    // The App trims the summary before sending.
     assert.equal(body.summary, "looks good");
     assert.equal(body.comments.length, 0);
   });
@@ -869,14 +923,57 @@ describe("App", () => {
     assert.equal(screen.queryByText(/New comment on a\.ts line 2 \(right\)/i), null);
   });
 
-  it("fires /api/cancel and shows the discarded terminal screen on Discard", async () => {
+  it("fires /api/cancel on beforeunload while the review is active", async () => {
+    stub = defaultResponder();
+    render(<App />);
+    await waitFor(() => screen.getByRole("button", { name: /Comment on this file/i }));
+
+    window.dispatchEvent(new window.Event("beforeunload"));
+
+    await new Promise((r) => setTimeout(r, 0));
+    const cancels = stub.calls.filter((c) => c.url === "/api/cancel");
+    assert.equal(cancels.length, 1);
+    assert.equal(
+      (cancels[0]?.init as RequestInit & { keepalive?: boolean }).keepalive,
+      true,
+    );
+  });
+
+  it("ignores duplicate submit, discard, and beforeunload while a submit is in flight", async () => {
+    const deferred = createDeferredResponse();
+    stub = defaultResponder({
+      onSubmit: () => deferred.promise,
+    });
+    render(<App />);
+    await waitFor(() => screen.getByRole("button", { name: /Comment on this file/i }));
+
+    const summary = screen.getByPlaceholderText(/Overall review summary/i);
+    fireEvent.input(summary, { target: { value: "hello" } });
+
+    const submitButton = screen.getByRole("button", { name: /Submit review/i });
+    fireEvent.click(submitButton);
+    fireEvent.click(submitButton);
+    fireEvent.click(screen.getByRole("button", { name: /Discard/i }));
+    window.dispatchEvent(new window.Event("beforeunload"));
+
+    await new Promise((r) => setTimeout(r, 0));
+    assert.equal(stub.calls.filter((c) => c.url === "/api/submit").length, 1);
+    assert.equal(stub.calls.filter((c) => c.url === "/api/cancel").length, 0);
+
+    deferred.resolve();
+    await waitFor(() => screen.getByText(/Review sent to pi/i));
+  });
+
+  it("fires /api/cancel and shows the discarded auto-close screen on Discard", async () => {
     stub = defaultResponder();
     render(<App />);
     await waitFor(() => screen.getByRole("button", { name: /Comment on this file/i }));
 
     fireEvent.click(screen.getByRole("button", { name: /Discard/i }));
 
-    await waitFor(() => screen.getByText(/Review discarded/i));
+    await waitFor(() =>
+      screen.getByText(/Review discarded\. Pi has been told to cancel\. This tab will close automatically in 3 seconds\./i),
+    );
     // The keepalive fetch is fire-and-forget; yield once to let it land.
     await new Promise((r) => setTimeout(r, 0));
     const cancels = stub.calls.filter((c) => c.url === "/api/cancel");
@@ -887,7 +984,7 @@ describe("App", () => {
     );
   });
 
-  it("renders the fatal pane when /api/submit fails and stays interactive (no terminal)", async () => {
+  it("renders the fatal pane when /api/submit fails without entering a terminal state", async () => {
     stub = defaultResponder({
       onSubmit: () => new Response("", { status: 400 }),
     });

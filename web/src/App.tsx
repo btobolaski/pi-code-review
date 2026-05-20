@@ -15,6 +15,19 @@ export type CommentDraft =
 
 export type StoredComment = Comment & { id: number };
 
+export const TERMINAL_AUTO_CLOSE_DELAY_MS = 3_000;
+
+export function scheduleTerminalAutoClose(
+  closeWindow: () => void = () => window.close(),
+  schedule: typeof window.setTimeout = window.setTimeout.bind(window),
+  cancel: typeof window.clearTimeout = window.clearTimeout.bind(window),
+): () => void {
+  const timeoutId = schedule(() => {
+    closeWindow();
+  }, TERMINAL_AUTO_CLOSE_DELAY_MS);
+  return () => cancel(timeoutId);
+}
+
 let nextCommentId = 1;
 const allocateCommentId = (): number => nextCommentId++;
 
@@ -57,6 +70,11 @@ export function App(): preact.JSX.Element {
     window.addEventListener("beforeunload", onBeforeUnload);
     return () => window.removeEventListener("beforeunload", onBeforeUnload);
   }, []);
+
+  useEffect(() => {
+    if (terminal === "active") return;
+    return scheduleTerminalAutoClose();
+  }, [terminal]);
 
   const addComment = (draft: CommentDraft, body: string): void => {
     const trimmed = body.trim();
@@ -117,8 +135,8 @@ export function App(): preact.JSX.Element {
   if (terminal !== "active") {
     const message =
       terminal === "submitted"
-        ? "Review sent to pi. You can close this tab and return to your terminal."
-        : "Review discarded. Pi has been told to cancel; you can close this tab.";
+        ? "Review sent to pi. This tab will close automatically in 3 seconds; if it stays open, return to your terminal."
+        : "Review discarded. Pi has been told to cancel. This tab will close automatically in 3 seconds.";
     return (
       <div class="app fatal">
         <div class="notice">{message}</div>

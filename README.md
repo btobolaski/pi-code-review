@@ -42,9 +42,10 @@ Inside an interactive Pi session:
 
 Pi prints the URL of the local review server and tries to open your default browser. Leave comments, write an optional
 overall summary, then click **Submit review** to send the formatted markdown to the next agent turn, or **Discard** to
-cancel the review without sending a follow-up message. The review sidebar groups changed files into a directory tree,
-uses `+`, `-`, and `~` glyphs for added, deleted, and modified/renamed files, and keeps the active file highlight synced
-to the file currently pinned at the top of the review pane. Clicking a file header collapses or expands that file's diff
+cancel the review without sending a follow-up message. After either action, the review tab shows a short confirmation
+message and tries to close itself after 3 seconds. The review sidebar groups changed files into a directory tree, uses
+`+`, `-`, and `~` glyphs for added, deleted, and modified/renamed files, and keeps the active file highlight synced to
+the file currently pinned at the top of the review pane. Clicking a file header collapses or expands that file's diff
 while leaving any file-level comments visible, except while a line-comment composer or line-comment edit is open, and
 clicking the same file in the sidebar always re-expands it and scrolls it into view. When the active file changes while
 you scroll, the sidebar scrolls just enough to keep that row visible.

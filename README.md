@@ -42,8 +42,9 @@ Inside an interactive Pi session:
 
 Pi prints the URL of the local review server and tries to open your default browser. Leave comments, write an optional
 overall summary, click **Submit review**, and the formatted markdown lands in the next agent turn. The review sidebar
-groups changed files into a directory tree and uses `+`, `-`, and `~` glyphs for added, deleted, and modified/renamed
-files.
+groups changed files into a directory tree, uses `+`, `-`, and `~` glyphs for added, deleted, and modified/renamed
+files, and keeps the active file highlight synced to the file currently pinned at the top of the review pane. When the
+active file changes while you scroll, the sidebar scrolls just enough to keep that row visible.
 
 ## How it works
 

@@ -102,11 +102,15 @@ const duplicateBasenameDiff: DiffPayload = {
 
 type Stub = ReturnType<typeof installFetchStub>;
 let stub: Stub | null = null;
+const originalIntersectionObserver = globalThis.IntersectionObserver;
+let restoreIntersectionObserver: (() => void) | null = null;
 
 afterEach(() => {
   cleanup();
   stub?.restore();
   stub = null;
+  restoreIntersectionObserver?.();
+  restoreIntersectionObserver = null;
 });
 
 function defaultResponder(
@@ -127,6 +131,67 @@ function defaultResponder(
     }
     return new Response("not found", { status: 404 });
   });
+}
+
+class FakeIntersectionObserver {
+  static instances: FakeIntersectionObserver[] = [];
+
+  readonly observed = new Set<Element>();
+
+  constructor(
+    private readonly callback: IntersectionObserverCallback,
+    readonly options?: IntersectionObserverInit,
+  ) {
+    FakeIntersectionObserver.instances.push(this);
+  }
+
+  disconnect(): void {
+    this.observed.clear();
+  }
+
+  observe(element: Element): void {
+    this.observed.add(element);
+  }
+
+  unobserve(element: Element): void {
+    this.observed.delete(element);
+  }
+
+  takeRecords(): IntersectionObserverEntry[] {
+    return [];
+  }
+
+  emit(entries: Array<{ target: Element; isIntersecting: boolean; top: number }>): void {
+    this.callback(
+      entries.map(
+        ({ target, isIntersecting, top }) =>
+          ({
+            target,
+            isIntersecting,
+            boundingClientRect: { top } as DOMRectReadOnly,
+          }) as IntersectionObserverEntry,
+      ),
+      this as unknown as IntersectionObserver,
+    );
+  }
+}
+
+function installIntersectionObserverStub(): typeof FakeIntersectionObserver {
+  FakeIntersectionObserver.instances = [];
+  globalThis.IntersectionObserver = FakeIntersectionObserver as unknown as typeof IntersectionObserver;
+  restoreIntersectionObserver = () => {
+    FakeIntersectionObserver.instances = [];
+    if (originalIntersectionObserver) {
+      globalThis.IntersectionObserver = originalIntersectionObserver;
+      return;
+    }
+    delete (globalThis as { IntersectionObserver?: typeof IntersectionObserver }).IntersectionObserver;
+  };
+  return FakeIntersectionObserver;
+}
+
+function setMockTop(element: Element, top: number): void {
+  (element as HTMLElement).getBoundingClientRect = () => ({ top }) as DOMRect;
 }
 
 describe("App", () => {
@@ -200,9 +265,9 @@ describe("App", () => {
   it("keeps nested sidebar files clickable and updates the active row", async () => {
     stub = defaultResponder({ diff: nestedSidebarDiff });
     const originalScrollIntoView = HTMLElement.prototype.scrollIntoView;
-    let scrolledElementId: string | null = null;
+    const scrollCalls: string[] = [];
     HTMLElement.prototype.scrollIntoView = function () {
-      scrolledElementId = this.id;
+      scrollCalls.push(this.id);
     };
 
     try {
@@ -221,10 +286,179 @@ describe("App", () => {
       assert.equal(initialButton.classList.contains("active"), true);
       fireEvent.click(targetButton);
       assert.equal(targetButton.classList.contains("active"), true);
-      assert.equal(scrolledElementId, `file-${encodeURIComponent("web/src/App.tsx")}`);
+      assert.equal(
+        scrollCalls.includes(`file-${encodeURIComponent("web/src/App.tsx")}`),
+        true,
+      );
     } finally {
       HTMLElement.prototype.scrollIntoView = originalScrollIntoView;
     }
+  });
+
+  it("updates the active row when the top-band observer reports a new file", async () => {
+    stub = defaultResponder({ diff: nestedSidebarDiff });
+    const observerClass = installIntersectionObserverStub();
+    const originalScrollIntoView = HTMLElement.prototype.scrollIntoView;
+    const scrollCalls: Array<{
+      element: HTMLElement;
+      options: ScrollIntoViewOptions | boolean | undefined;
+    }> = [];
+    HTMLElement.prototype.scrollIntoView = function (options) {
+      scrollCalls.push({
+        element: this,
+        options,
+      });
+    };
+
+    try {
+      render(<App />);
+      await waitFor(() =>
+        screen.getByRole("button", { name: "extension/index.ts added" }),
+      );
+
+      const initialButton = screen.getByRole("button", {
+        name: "extension/index.ts added",
+      }) as HTMLButtonElement;
+      const targetButton = screen.getByRole("button", {
+        name: "web/src/App.tsx deleted",
+      }) as HTMLButtonElement;
+      assert.equal(initialButton.classList.contains("active"), true);
+
+      const observer = await waitFor(() => {
+        const instance = observerClass.instances[0];
+        assert.ok(instance, "expected DiffView to create an IntersectionObserver");
+        return instance;
+      });
+
+      assert.equal(observer.options?.rootMargin, "0px 0px -85% 0px");
+      const mainPane = document.querySelector("main.main");
+      assert.equal(observer.options?.root, mainPane);
+      assert.deepEqual(
+        [...observer.observed].map((element) => (element as HTMLElement).id),
+        nestedSidebarDiff.files.map((file) => `file-${encodeURIComponent(file.filePath)}`),
+      );
+
+      const initialSection = document.getElementById(
+        `file-${encodeURIComponent("extension/index.ts")}`,
+      );
+      const targetSection = document.getElementById(
+        `file-${encodeURIComponent("web/src/App.tsx")}`,
+      );
+      assert.ok(mainPane, "expected main scroll pane");
+      assert.ok(initialSection, "expected initial file section");
+      assert.ok(targetSection, "expected target file section");
+
+      setMockTop(mainPane, 0);
+      setMockTop(initialSection, -4);
+      observer.emit([{ target: initialSection, isIntersecting: true, top: -4 }]);
+
+      setMockTop(targetSection, 12);
+      observer.emit([
+        { target: initialSection, isIntersecting: false, top: -200 },
+        { target: targetSection, isIntersecting: true, top: 12 },
+      ]);
+
+      await waitFor(() => assert.equal(targetButton.classList.contains("active"), true));
+      await waitFor(() =>
+        assert.equal(
+          scrollCalls.some(
+            (call) =>
+              call.element === targetButton &&
+              typeof call.options === "object" &&
+              call.options?.block === "nearest",
+          ),
+          true,
+        ),
+      );
+    } finally {
+      HTMLElement.prototype.scrollIntoView = originalScrollIntoView;
+    }
+  });
+
+  it("chooses the intersecting file closest to the top of the main pane", async () => {
+    stub = defaultResponder({ diff: nestedSidebarDiff });
+    const observerClass = installIntersectionObserverStub();
+
+    render(<App />);
+    await waitFor(() =>
+      screen.getByRole("button", { name: "extension/index.ts added" }),
+    );
+
+    const observer = await waitFor(() => {
+      const instance = observerClass.instances[0];
+      assert.ok(instance, "expected DiffView to create an IntersectionObserver");
+      return instance;
+    });
+
+    const mainPane = document.querySelector("main.main");
+    const firstSection = document.getElementById(
+      `file-${encodeURIComponent("extension/index.ts")}`,
+    );
+    const secondSection = document.getElementById(
+      `file-${encodeURIComponent("extension/src/command.ts")}`,
+    );
+    const thirdSection = document.getElementById(
+      `file-${encodeURIComponent("web/src/App.tsx")}`,
+    );
+    assert.ok(mainPane, "expected main scroll pane");
+    assert.ok(firstSection, "expected first file section");
+    assert.ok(secondSection, "expected second file section");
+    assert.ok(thirdSection, "expected third file section");
+
+    setMockTop(mainPane, 0);
+    setMockTop(firstSection, -300);
+    setMockTop(secondSection, -10);
+    setMockTop(thirdSection, 8);
+    observer.emit([
+      { target: firstSection, isIntersecting: true, top: -300 },
+      { target: secondSection, isIntersecting: true, top: -10 },
+      { target: thirdSection, isIntersecting: true, top: 8 },
+    ]);
+
+    const secondButton = screen.getByRole("button", {
+      name: "extension/src/command.ts renamed",
+    }) as HTMLButtonElement;
+    await waitFor(() => assert.equal(secondButton.classList.contains("active"), true));
+  });
+
+  it("recomputes current section positions instead of using stale observer tops", async () => {
+    stub = defaultResponder({ diff: nestedSidebarDiff });
+    const observerClass = installIntersectionObserverStub();
+
+    render(<App />);
+    await waitFor(() =>
+      screen.getByRole("button", { name: "extension/index.ts added" }),
+    );
+
+    const observer = await waitFor(() => {
+      const instance = observerClass.instances[0];
+      assert.ok(instance, "expected DiffView to create an IntersectionObserver");
+      return instance;
+    });
+
+    const mainPane = document.querySelector("main.main");
+    const firstSection = document.getElementById(
+      `file-${encodeURIComponent("extension/index.ts")}`,
+    );
+    const secondSection = document.getElementById(
+      `file-${encodeURIComponent("extension/src/command.ts")}`,
+    );
+    assert.ok(mainPane, "expected main scroll pane");
+    assert.ok(firstSection, "expected first file section");
+    assert.ok(secondSection, "expected second file section");
+
+    setMockTop(mainPane, 0);
+    setMockTop(firstSection, 40);
+    observer.emit([{ target: firstSection, isIntersecting: true, top: 40 }]);
+
+    setMockTop(firstSection, -10);
+    setMockTop(secondSection, 8);
+    observer.emit([{ target: secondSection, isIntersecting: true, top: 8 }]);
+
+    const firstButton = screen.getByRole("button", {
+      name: "extension/index.ts added",
+    }) as HTMLButtonElement;
+    await waitFor(() => assert.equal(firstButton.classList.contains("active"), true));
   });
 
   it("shows the fatal error pane when /api/diff fails", async () => {

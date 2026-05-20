@@ -124,9 +124,22 @@ least once (a previous build is fine) before launching `/code-review`.
 pnpm test          # runs both workspace test suites
 ```
 
+For fuller local verification, also run:
+
+```bash
+pnpm typecheck
+pnpm --filter web build
+```
+
 Coverage:
 
-- `extension/src/__test__/format.test.ts` — markdown formatter + context extraction + fence selection
+- `extension/src/__test__/command.test.ts` — `/code-review` command lifecycle, notifications, follow-up sending, and
+  cleanup
 - `extension/src/__test__/diff.test.ts` — unified-diff parsing + VCS detection
+- `extension/src/__test__/format.test.ts` — markdown formatter + context extraction + fence selection
+- `extension/src/__test__/open-browser.test.ts` — platform-specific browser launch command selection
 - `extension/src/__test__/server.test.ts` — HTTP server + submit-payload validation
+- `web/src/__test__/api.test.ts` — frontend API helpers for diff fetch, submit, and cancel
+- `web/src/__test__/app.test.tsx` — top-level Preact review workflow
+- `web/src/__test__/lang.test.ts` — language detection for syntax highlighting
 - `web/src/__test__/selection.test.ts` — side-aware line-selection helpers

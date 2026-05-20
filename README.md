@@ -41,7 +41,9 @@ Inside an interactive Pi session:
 ```
 
 Pi prints the URL of the local review server and tries to open your default browser. Leave comments, write an optional
-overall summary, click **Submit review**, and the formatted markdown lands in the next agent turn.
+overall summary, click **Submit review**, and the formatted markdown lands in the next agent turn. The review sidebar
+groups changed files into a directory tree and uses `+`, `-`, and `~` glyphs for added, deleted, and modified/renamed
+files.
 
 ## How it works
 

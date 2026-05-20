@@ -19,6 +19,9 @@
   --del-bg-strong: #ffcecb;
   --del-gutter: #ffd7d5;
   --hl-bg: rgba(187, 128, 9, 0.18);
+  --status-add: #1a7f37;
+  --status-del: #cf222e;
+  --status-mod: #9a6700;
   --shadow: 0 2px 6px rgba(0, 0, 0, 0.08);
   --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
   --danger: #d1242f;
@@ -43,6 +46,9 @@
     --del-bg-strong: rgba(248, 81, 73, 0.4);
     --del-gutter: rgba(248, 81, 73, 0.25);
     --hl-bg: rgba(187, 128, 9, 0.25);
+    --status-add: #3fb950;
+    --status-del: #f85149;
+    --status-mod: #d29922;
     --shadow: 0 2px 6px rgba(0, 0, 0, 0.5);
     --danger: #f85149;
   }
@@ -107,11 +113,24 @@ a {
 }
 
 .sidebar-heading {
-  font-size: 12px;
+  font-size: 13px;
   text-transform: uppercase;
   letter-spacing: 0.04em;
   color: var(--text-soft);
   padding: 0 16px 8px;
+}
+
+.sidebar-tree {
+  display: flex;
+  flex-direction: column;
+}
+
+.sidebar-dir {
+  padding: 6px 16px 2px;
+  color: var(--text-soft);
+  font-family: var(--mono);
+  font-size: 13px;
+  font-weight: 600;
 }
 
 .sidebar-file {
@@ -127,8 +146,7 @@ a {
   width: 100%;
   font: inherit;
   font-family: var(--mono);
-  font-size: 12px;
-  word-break: break-all;
+  font-size: 13px;
 }
 
 .sidebar-file:hover {
@@ -140,11 +158,37 @@ a {
   font-weight: 600;
 }
 
+.sidebar-file-label {
+  flex: 1 1 auto;
+  min-width: 0;
+  word-break: break-all;
+}
+
+.sidebar-file-meta {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
 .sidebar-file-status {
-  font-size: 10px;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
   color: var(--text-soft);
+  font-family: var(--mono);
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1;
+}
+
+.sidebar-file-status.status-added {
+  color: var(--status-add);
+}
+
+.sidebar-file-status.status-deleted {
+  color: var(--status-del);
+}
+
+.sidebar-file-status.status-modified {
+  color: var(--status-mod);
 }
 
 .sidebar-file-count {
@@ -152,7 +196,7 @@ a {
   color: white;
   border-radius: 999px;
   padding: 1px 7px;
-  font-size: 11px;
+  font-size: 12px;
   font-family: var(--mono);
 }
 

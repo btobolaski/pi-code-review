@@ -42,6 +42,64 @@ const sampleDiff: DiffPayload = {
   ],
 };
 
+const nestedSidebarDiff: DiffPayload = {
+  vcs: "jj",
+  revset: "@",
+  cwd: "/r",
+  files: [
+    {
+      oldPath: null,
+      newPath: "extension/index.ts",
+      filePath: "extension/index.ts",
+      status: "added",
+      hunks: [],
+    },
+    {
+      oldPath: "extension/src/old-command.ts",
+      newPath: "extension/src/command.ts",
+      filePath: "extension/src/command.ts",
+      status: "renamed",
+      hunks: [],
+    },
+    {
+      oldPath: "extension/src/diff.ts",
+      newPath: "extension/src/diff.ts",
+      filePath: "extension/src/diff.ts",
+      status: "modified",
+      hunks: [],
+    },
+    {
+      oldPath: "web/src/App.tsx",
+      newPath: null,
+      filePath: "web/src/App.tsx",
+      status: "deleted",
+      hunks: [],
+    },
+  ],
+};
+
+const duplicateBasenameDiff: DiffPayload = {
+  vcs: "jj",
+  revset: "@",
+  cwd: "/r",
+  files: [
+    {
+      oldPath: "extension/index.ts",
+      newPath: "extension/index.ts",
+      filePath: "extension/index.ts",
+      status: "modified",
+      hunks: [],
+    },
+    {
+      oldPath: "web/index.ts",
+      newPath: "web/index.ts",
+      filePath: "web/index.ts",
+      status: "modified",
+      hunks: [],
+    },
+  ],
+};
+
 type Stub = ReturnType<typeof installFetchStub>;
 let stub: Stub | null = null;
 
@@ -52,11 +110,11 @@ afterEach(() => {
 });
 
 function defaultResponder(
-  options: { onSubmit?: (call: FetchCall) => Response } = {},
+  options: { diff?: DiffPayload; onSubmit?: (call: FetchCall) => Response } = {},
 ): Stub {
   return installFetchStub((call) => {
     if (call.url === "/api/diff") {
-      return new Response(JSON.stringify(sampleDiff), {
+      return new Response(JSON.stringify(options.diff ?? sampleDiff), {
         status: 200,
         headers: { "content-type": "application/json" },
       });
@@ -78,6 +136,95 @@ describe("App", () => {
     assert.ok(screen.getByText(/Loading diff/i));
     await waitFor(() => screen.getByRole("button", { name: /Comment on this file/i }));
     assert.ok(screen.getByText("No comments yet"));
+  });
+
+  it("renders the sidebar as a directory tree with status glyphs", async () => {
+    stub = defaultResponder({ diff: nestedSidebarDiff });
+    const { container } = render(<App />);
+
+    await waitFor(() => screen.getByText("extension"));
+
+    const dirNames = [...container.querySelectorAll("nav.sidebar .sidebar-dir")].map((node) =>
+      node.textContent?.trim(),
+    );
+    assert.deepEqual(dirNames, ["extension", "src", "web", "src"]);
+    assert.equal(screen.queryByRole("button", { name: "extension" }), null);
+    assert.equal(screen.queryByRole("button", { name: "src" }), null);
+
+    const sidebarFiles = [...container.querySelectorAll("nav.sidebar .sidebar-file")].map((node) => ({
+      label: node.querySelector(".sidebar-file-label")?.textContent,
+      status: node.querySelector(".sidebar-file-status")?.textContent,
+      statusClass: node.querySelector(".sidebar-file-status")?.className,
+      ariaHidden: node.querySelector(".sidebar-file-status")?.getAttribute("aria-hidden"),
+    }));
+    assert.deepEqual(sidebarFiles, [
+      {
+        label: "index.ts",
+        status: "+",
+        statusClass: "sidebar-file-status status-added",
+        ariaHidden: "true",
+      },
+      {
+        label: "command.ts",
+        status: "~",
+        statusClass: "sidebar-file-status status-modified",
+        ariaHidden: "true",
+      },
+      {
+        label: "diff.ts",
+        status: "~",
+        statusClass: "sidebar-file-status status-modified",
+        ariaHidden: "true",
+      },
+      {
+        label: "App.tsx",
+        status: "-",
+        statusClass: "sidebar-file-status status-deleted",
+        ariaHidden: "true",
+      },
+    ]);
+  });
+
+  it("gives duplicate sidebar basenames distinct accessible labels", async () => {
+    stub = defaultResponder({ diff: duplicateBasenameDiff });
+    render(<App />);
+
+    await waitFor(() =>
+      screen.getByRole("button", { name: "extension/index.ts modified" }),
+    );
+
+    assert.ok(screen.getByRole("button", { name: "extension/index.ts modified" }));
+    assert.ok(screen.getByRole("button", { name: "web/index.ts modified" }));
+  });
+
+  it("keeps nested sidebar files clickable and updates the active row", async () => {
+    stub = defaultResponder({ diff: nestedSidebarDiff });
+    const originalScrollIntoView = HTMLElement.prototype.scrollIntoView;
+    let scrolledElementId: string | null = null;
+    HTMLElement.prototype.scrollIntoView = function () {
+      scrolledElementId = this.id;
+    };
+
+    try {
+      render(<App />);
+      await waitFor(() =>
+        screen.getByRole("button", { name: "extension/index.ts added" }),
+      );
+
+      const initialButton = screen.getByRole("button", {
+        name: "extension/index.ts added",
+      }) as HTMLButtonElement;
+      const targetButton = screen.getByRole("button", {
+        name: "web/src/App.tsx deleted",
+      }) as HTMLButtonElement;
+
+      assert.equal(initialButton.classList.contains("active"), true);
+      fireEvent.click(targetButton);
+      assert.equal(targetButton.classList.contains("active"), true);
+      assert.equal(scrolledElementId, `file-${encodeURIComponent("web/src/App.tsx")}`);
+    } finally {
+      HTMLElement.prototype.scrollIntoView = originalScrollIntoView;
+    }
   });
 
   it("shows the fatal error pane when /api/diff fails", async () => {
@@ -103,6 +250,12 @@ describe("App", () => {
 
     // The comment count in the submit bar should update synchronously after save.
     await waitFor(() => screen.getByText("1 comment"));
+    assert.equal(
+      screen.getByRole("button", { name: "a.ts modified 1 comment" }).querySelector(
+        ".sidebar-file-count",
+      )?.textContent,
+      "1",
+    );
 
     fireEvent.click(screen.getByRole("button", { name: /Submit review/i }));
 

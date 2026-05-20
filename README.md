@@ -41,10 +41,13 @@ Inside an interactive Pi session:
 ```
 
 Pi prints the URL of the local review server and tries to open your default browser. Leave comments, write an optional
-overall summary, click **Submit review**, and the formatted markdown lands in the next agent turn. The review sidebar
-groups changed files into a directory tree, uses `+`, `-`, and `~` glyphs for added, deleted, and modified/renamed
-files, and keeps the active file highlight synced to the file currently pinned at the top of the review pane. When the
-active file changes while you scroll, the sidebar scrolls just enough to keep that row visible.
+overall summary, then click **Submit review** to send the formatted markdown to the next agent turn, or **Discard** to
+cancel the review without sending a follow-up message. The review sidebar groups changed files into a directory tree,
+uses `+`, `-`, and `~` glyphs for added, deleted, and modified/renamed files, and keeps the active file highlight synced
+to the file currently pinned at the top of the review pane. Clicking a file header collapses or expands that file's diff
+while leaving any file-level comments visible, except while a line-comment composer or line-comment edit is open, and
+clicking the same file in the sidebar always re-expands it and scrolls it into view. When the active file changes while
+you scroll, the sidebar scrolls just enough to keep that row visible.
 
 ## How it works
 
@@ -102,7 +105,8 @@ The code-block fence grows automatically so embedded triple-backticks don't brea
 - `web/dist/` missing — the command short-circuits with an error pointing at the build command. The HTTP server is never
   started.
 - No changes for the chosen revset — the command notifies and exits.
-- Zero comments and empty summary — nothing is sent to the agent.
+- Submit review stays disabled until you add at least one comment or a non-empty overall summary. If an empty payload
+  somehow still reaches the extension, nothing is sent to the agent.
 - Browser closed without submitting — `beforeunload` fires `/api/cancel`, the extension stops waiting, no agent message.
 - Non-interactive Pi mode (`-p`) — command short-circuits with a notice.
 
@@ -144,5 +148,6 @@ Coverage:
 - `extension/src/__test__/server.test.ts` — HTTP server + submit-payload validation
 - `web/src/__test__/api.test.ts` — frontend API helpers for diff fetch, submit, and cancel
 - `web/src/__test__/app.test.tsx` — top-level Preact review workflow
+- `web/src/__test__/fileTree.test.ts` — sidebar directory-tree construction and ordering
 - `web/src/__test__/lang.test.ts` — language detection for syntax highlighting
 - `web/src/__test__/selection.test.ts` — side-aware line-selection helpers

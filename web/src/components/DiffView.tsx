@@ -16,6 +16,7 @@ export type DiffViewProps = {
 export function DiffView(props: DiffViewProps): preact.JSX.Element {
   const { diff, commentsByFile } = props;
   const [activeFile, setActiveFile] = useState<string>(diff.files[0]?.filePath ?? "");
+  const [collapsedFiles, setCollapsedFiles] = useState<Set<string>>(new Set());
   const mainRef = useRef<HTMLElement | null>(null);
   const intersectingFilesRef = useRef<Map<string, ObservedFileSection>>(new Map());
   const sidebarButtonRefs = useRef<Map<string, HTMLButtonElement>>(new Map());
@@ -34,6 +35,18 @@ export function DiffView(props: DiffViewProps): preact.JSX.Element {
     setActiveFile((current) => {
       if (current && filePaths.has(current)) return current;
       return diff.files[0]?.filePath ?? "";
+    });
+    setCollapsedFiles((current) => {
+      let changed = false;
+      const next = new Set<string>();
+      for (const filePath of current) {
+        if (!filePaths.has(filePath)) {
+          changed = true;
+          continue;
+        }
+        next.add(filePath);
+      }
+      return changed ? next : current;
     });
   }, [diff.files]);
 
@@ -96,8 +109,26 @@ export function DiffView(props: DiffViewProps): preact.JSX.Element {
     sidebarButtonRefs.current.get(activeFile)?.scrollIntoView({ block: "nearest" });
   }, [activeFile]);
 
+  const toggleCollapsed = (filePath: string) => {
+    setCollapsedFiles((current) => {
+      const next = new Set(current);
+      if (next.has(filePath)) {
+        next.delete(filePath);
+      } else {
+        next.add(filePath);
+      }
+      return next;
+    });
+  };
+
   const handleFileClick = (filePath: string) => {
     setActiveFile(filePath);
+    setCollapsedFiles((current) => {
+      if (!current.has(filePath)) return current;
+      const next = new Set(current);
+      next.delete(filePath);
+      return next;
+    });
     const el = document.getElementById(fileAnchorId(filePath));
     if (el) el.scrollIntoView({ behavior: "smooth", block: "start" });
   };
@@ -128,6 +159,8 @@ export function DiffView(props: DiffViewProps): preact.JSX.Element {
             fileIdx={fileIdx}
             anchorId={fileAnchorId(file.filePath)}
             comments={commentsByFile.get(file.filePath) ?? []}
+            collapsed={collapsedFiles.has(file.filePath)}
+            onToggleCollapsed={toggleCollapsed}
             onAddComment={props.onAddComment}
             onUpdateComment={props.onUpdateComment}
             onDeleteComment={props.onDeleteComment}

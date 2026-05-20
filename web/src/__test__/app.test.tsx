@@ -42,6 +42,34 @@ const sampleDiff: DiffPayload = {
   ],
 };
 
+const twoFileDiff: DiffPayload = {
+  vcs: "jj",
+  revset: "@",
+  cwd: "/r",
+  files: [
+    sampleDiff.files[0]!,
+    {
+      oldPath: "b.ts",
+      newPath: "b.ts",
+      filePath: "b.ts",
+      status: "modified",
+      hunks: [
+        {
+          oldStart: 10,
+          oldLines: 2,
+          newStart: 10,
+          newLines: 2,
+          header: "",
+          lines: [
+            { kind: "context", oldLine: 10, newLine: 10, text: "epsilon" },
+            { kind: "context", oldLine: 11, newLine: 11, text: "zeta" },
+          ],
+        },
+      ],
+    },
+  ],
+};
+
 const nestedSidebarDiff: DiffPayload = {
   vcs: "jj",
   revset: "@",
@@ -260,6 +288,106 @@ describe("App", () => {
 
     assert.ok(screen.getByRole("button", { name: "extension/index.ts modified" }));
     assert.ok(screen.getByRole("button", { name: "web/index.ts modified" }));
+  });
+
+  it("collapses a file when its header is clicked", async () => {
+    stub = defaultResponder();
+    render(<App />);
+
+    const header = (await waitFor(() =>
+      screen.getByRole("button", { name: "Collapse a.ts" }))) as HTMLButtonElement;
+    assert.equal(header.getAttribute("aria-expanded"), "true");
+    assert.ok(screen.getByRole("table", { name: "Diff hunk for a.ts" }));
+
+    fireEvent.click(header);
+
+    const expandButton = (await waitFor(() =>
+      screen.getByRole("button", { name: "Expand a.ts" }))) as HTMLButtonElement;
+    assert.equal(expandButton.getAttribute("aria-expanded"), "false");
+    assert.equal(screen.queryByRole("table", { name: "Diff hunk for a.ts" }), null);
+  });
+
+  it("re-expands a collapsed file when its sidebar row is clicked", async () => {
+    stub = defaultResponder();
+    const originalScrollIntoView = HTMLElement.prototype.scrollIntoView;
+    const scrollCalls: Array<{
+      element: HTMLElement;
+      options: ScrollIntoViewOptions | boolean | undefined;
+    }> = [];
+    HTMLElement.prototype.scrollIntoView = function (options) {
+      scrollCalls.push({ element: this, options });
+    };
+
+    try {
+      render(<App />);
+
+      const header = (await waitFor(() =>
+        screen.getByRole("button", { name: "Collapse a.ts" }))) as HTMLButtonElement;
+      fireEvent.click(header);
+      await waitFor(() => screen.getByRole("button", { name: "Expand a.ts" }));
+      assert.equal(screen.queryByRole("table", { name: "Diff hunk for a.ts" }), null);
+
+      fireEvent.click(screen.getByRole("button", { name: "a.ts modified" }));
+
+      const collapseButton = (await waitFor(() =>
+        screen.getByRole("button", { name: "Collapse a.ts" }))) as HTMLButtonElement;
+      assert.equal(collapseButton.getAttribute("aria-expanded"), "true");
+      await waitFor(() => assert.ok(screen.getByRole("table", { name: "Diff hunk for a.ts" })));
+      assert.equal(
+        scrollCalls.some(
+          (call) =>
+            call.element.id === `file-${encodeURIComponent("a.ts")}` &&
+            typeof call.options === "object" &&
+            call.options?.behavior === "smooth" &&
+            call.options?.block === "start",
+        ),
+        true,
+      );
+    } finally {
+      HTMLElement.prototype.scrollIntoView = originalScrollIntoView;
+    }
+  });
+
+  it("collapses only the targeted file", async () => {
+    stub = defaultResponder({ diff: twoFileDiff });
+    render(<App />);
+
+    const firstHeader = (await waitFor(() =>
+      screen.getByRole("button", { name: "Collapse a.ts" }))) as HTMLButtonElement;
+    assert.ok(screen.getByRole("button", { name: "Collapse b.ts" }));
+    assert.ok(screen.getByRole("table", { name: "Diff hunk for a.ts" }));
+    assert.ok(screen.getByRole("table", { name: "Diff hunk for b.ts" }));
+
+    fireEvent.click(firstHeader);
+
+    await waitFor(() => screen.getByRole("button", { name: "Expand a.ts" }));
+    assert.equal(screen.queryByRole("table", { name: "Diff hunk for a.ts" }), null);
+    assert.ok(screen.getByRole("table", { name: "Diff hunk for b.ts" }));
+  });
+
+  it("keeps file-level comments visible while the diff is collapsed", async () => {
+    stub = defaultResponder();
+    render(<App />);
+    await waitFor(() => screen.getByRole("button", { name: /Comment on this file/i }));
+
+    fireEvent.click(screen.getByRole("button", { name: /Comment on this file/i }));
+    const textarea = (await waitFor(() =>
+      screen.getByPlaceholderText(/Leave a comment/i))) as HTMLTextAreaElement;
+    fireEvent.input(textarea, { target: { value: "keep this visible" } });
+    fireEvent.click(screen.getByRole("button", { name: /^Save$/ }));
+
+    await waitFor(() => screen.getByText("keep this visible"));
+    fireEvent.click(screen.getByRole("button", { name: "Collapse a.ts" }));
+
+    await waitFor(() => screen.getByRole("button", { name: "Expand a.ts" }));
+    assert.equal(screen.queryByRole("table", { name: "Diff hunk for a.ts" }), null);
+    assert.ok(screen.getByText("keep this visible"));
+    assert.equal(
+      screen.getByRole("button", { name: "a.ts modified 1 comment" }).querySelector(
+        ".sidebar-file-count",
+      )?.textContent,
+      "1",
+    );
   });
 
   it("keeps nested sidebar files clickable and updates the active row", async () => {
@@ -554,6 +682,21 @@ describe("App", () => {
     await waitFor(() => screen.getByText(/New comment on a\.ts line 2 \(right\)/i));
   });
 
+  it("disables collapsing while a line-comment composer is open", async () => {
+    stub = defaultResponder();
+    render(<App />);
+    await waitFor(() => screen.getByRole("button", { name: /Comment on this file/i }));
+
+    fireEvent.click(screen.getByRole("button", { name: /Comment on right line 2/i }), {
+      detail: 0,
+    });
+    await waitFor(() => screen.getByText(/New comment on a\.ts line 2 \(right\)/i));
+
+    const collapseButton = screen.getByRole("button", { name: "Collapse a.ts" }) as HTMLButtonElement;
+    assert.equal(collapseButton.disabled, true);
+    assert.ok(screen.getByRole("table", { name: "Diff hunk for a.ts" }));
+  });
+
   it("submits a right-side line comment created from the gutter", async () => {
     stub = defaultResponder();
     const { container } = render(<App />);
@@ -650,6 +793,30 @@ describe("App", () => {
     fireEvent.click(screen.getByRole("button", { name: /Delete Comment on line 2 \(right\)/i }));
     await waitFor(() => assert.equal(screen.queryByText("updated draft"), null));
     assert.equal(screen.queryByText("1 comment"), null);
+  });
+
+  it("disables collapsing while editing a line comment", async () => {
+    stub = defaultResponder();
+    const { container } = render(<App />);
+    await waitFor(() => screen.getByRole("button", { name: /Comment on this file/i }));
+
+    const gutter = container.querySelector('[data-line-id="0:right:2"]');
+    assert.ok(gutter, "expected right-side gutter for line 2");
+    fireEvent.mouseDown(gutter, { button: 0 });
+    fireEvent.mouseUp(window);
+
+    const textarea = (await waitFor(() =>
+      screen.getByPlaceholderText(/Leave a comment/i))) as HTMLTextAreaElement;
+    fireEvent.input(textarea, { target: { value: "first draft" } });
+    fireEvent.click(screen.getByRole("button", { name: /^Save$/ }));
+    await waitFor(() => screen.getByText("first draft"));
+
+    fireEvent.click(screen.getByRole("button", { name: /Edit Comment on line 2 \(right\)/i }));
+    await waitFor(() => screen.getByDisplayValue("first draft"));
+
+    const collapseButton = screen.getByRole("button", { name: "Collapse a.ts" }) as HTMLButtonElement;
+    assert.equal(collapseButton.disabled, true);
+    assert.ok(screen.getByRole("table", { name: "Diff hunk for a.ts" }));
   });
 
   it("disables line-comment edits while another composer is open", async () => {

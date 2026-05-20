@@ -11,6 +11,8 @@ export type FilePaneProps = {
   fileIdx: number;
   anchorId: string;
   comments: StoredComment[];
+  collapsed: boolean;
+  onToggleCollapsed: (filePath: string) => void;
   onAddComment: (draft: CommentDraft, body: string) => void;
   onUpdateComment: (id: number, body: string) => void;
   onDeleteComment: (id: number) => void;
@@ -36,7 +38,7 @@ export type OpenComposer =
   | { kind: "edit"; commentId: number };
 
 export function FilePane(props: FilePaneProps): preact.JSX.Element {
-  const { file, fileIdx, comments, anchorId } = props;
+  const { file, fileIdx, comments, anchorId, collapsed } = props;
   const [open, setOpen] = useState<OpenComposer | null>(null);
 
   const fileComments = comments.filter(
@@ -45,6 +47,10 @@ export function FilePane(props: FilePaneProps): preact.JSX.Element {
   const lineComments = comments.filter(
     (c): c is StoredComment & { kind: "line" } => c.kind === "line",
   );
+  const editingLineCommentId = open?.kind === "edit" ? open.commentId : null;
+  const lineComposerOpen =
+    open?.kind === "new-line" ||
+    (editingLineCommentId !== null && lineComments.some((c) => c.id === editingLineCommentId));
 
   const closeComposer = (): void => setOpen(null);
 
@@ -72,12 +78,27 @@ export function FilePane(props: FilePaneProps): preact.JSX.Element {
   return (
     <section class="file" id={anchorId}>
       <header class="file-header">
-        <div>
-          <span class="file-header-path">{file.filePath}</span>
-          <span class="file-header-status">{file.status}</span>
-        </div>
+        <button
+          type="button"
+          class="file-header-toggle"
+          aria-expanded={!collapsed}
+          aria-label={`${collapsed ? "Expand" : "Collapse"} ${file.filePath}`}
+          disabled={lineComposerOpen}
+          onClick={() => props.onToggleCollapsed(file.filePath)}
+        >
+          <span class="file-header-main">
+            <span class={`file-header-chevron${collapsed ? " collapsed" : ""}`} aria-hidden="true">
+              ▾
+            </span>
+            <span class="file-header-title">
+              <span class="file-header-path">{file.filePath}</span>
+              <span class="file-header-status">{file.status}</span>
+            </span>
+          </span>
+        </button>
         <div class="file-header-actions">
           <button
+            type="button"
             class="btn"
             disabled={open !== null}
             onClick={() => openComposer({ kind: "new-file", filePath: file.filePath })}
@@ -126,33 +147,35 @@ export function FilePane(props: FilePaneProps): preact.JSX.Element {
         </div>
       )}
 
-      <div class={`file-diff${open !== null ? " composer-open" : ""}`}>
-        {file.hunks.map((hunk, hunkIdx) => (
-          <Hunk
-            key={hunkIdx}
-            hunk={hunk}
-            file={file}
-            fileIdx={fileIdx}
-            hunkIdx={hunkIdx}
-            comments={lineComments.filter((c) => isCommentInHunk(c, hunk))}
-            composer={open}
-            onStartNewLine={(side, startLine, endLine) =>
-              startNewLineComposer(hunkIdx, side, startLine, endLine)
-            }
-            onCancel={closeComposer}
-            onSaveNew={(body, draft) => {
-              props.onAddComment(draft, body);
-              closeComposer();
-            }}
-            onStartEdit={(id) => openComposer({ kind: "edit", commentId: id })}
-            onSaveEdit={(id, body) => {
-              props.onUpdateComment(id, body);
-              closeComposer();
-            }}
-            onDelete={(id) => props.onDeleteComment(id)}
-          />
-        ))}
-      </div>
+      {!collapsed ? (
+        <div class={`file-diff${open !== null ? " composer-open" : ""}`}>
+          {file.hunks.map((hunk, hunkIdx) => (
+            <Hunk
+              key={hunkIdx}
+              hunk={hunk}
+              file={file}
+              fileIdx={fileIdx}
+              hunkIdx={hunkIdx}
+              comments={lineComments.filter((c) => isCommentInHunk(c, hunk))}
+              composer={open}
+              onStartNewLine={(side, startLine, endLine) =>
+                startNewLineComposer(hunkIdx, side, startLine, endLine)
+              }
+              onCancel={closeComposer}
+              onSaveNew={(body, draft) => {
+                props.onAddComment(draft, body);
+                closeComposer();
+              }}
+              onStartEdit={(id) => openComposer({ kind: "edit", commentId: id })}
+              onSaveEdit={(id, body) => {
+                props.onUpdateComment(id, body);
+                closeComposer();
+              }}
+              onDelete={(id) => props.onDeleteComment(id)}
+            />
+          ))}
+        </div>
+      ) : null}
     </section>
   );
 }

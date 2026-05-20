@@ -51,7 +51,6 @@ afterEach(() => {
   stub = null;
 });
 
-/** Build a fetch responder that serves the diff and records submits. */
 function defaultResponder(
   options: { onSubmit?: (call: FetchCall) => Response } = {},
 ): Stub {
@@ -95,7 +94,6 @@ describe("App", () => {
     render(<App />);
     await waitFor(() => screen.getByRole("button", { name: /Comment on this file/i }));
 
-    // Open the file-level composer.
     fireEvent.click(screen.getByRole("button", { name: /Comment on this file/i }));
     const textarea = await waitFor(() =>
       screen.getByPlaceholderText(/Leave a comment/i),
@@ -121,7 +119,6 @@ describe("App", () => {
     assert.equal(body.comments[0]?.filePath, "a.ts");
     assert.equal((body.comments[0] as { body: string }).body, "needs more tests");
 
-    // Cancel must not have fired.
     assert.equal(
       stub.calls.filter((c) => c.url === "/api/cancel").length,
       0,
@@ -157,6 +154,165 @@ describe("App", () => {
     const summary = screen.getByPlaceholderText(/Overall review summary/i);
     fireEvent.input(summary, { target: { value: "x" } });
     assert.equal((submitBtn as HTMLButtonElement).disabled, false);
+  });
+
+  it("opens a line-comment composer from gutter button activation", async () => {
+    stub = defaultResponder();
+    render(<App />);
+    await waitFor(() => screen.getByRole("button", { name: /Comment on this file/i }));
+
+    const gutterButton = screen.getByRole("button", { name: /Comment on right line 2/i });
+    fireEvent.click(gutterButton, { detail: 0 });
+
+    await waitFor(() => screen.getByText(/New comment on a\.ts line 2 \(right\)/i));
+  });
+
+  it("submits a right-side line comment created from the gutter", async () => {
+    stub = defaultResponder();
+    const { container } = render(<App />);
+    await waitFor(() => screen.getByRole("button", { name: /Comment on this file/i }));
+
+    const gutter = container.querySelector('[data-line-id="0:right:2"]');
+    assert.ok(gutter, "expected right-side gutter for line 2");
+    fireEvent.mouseDown(gutter, { button: 0 });
+    fireEvent.mouseUp(window);
+
+    const textarea = (await waitFor(() =>
+      screen.getByPlaceholderText(/Leave a comment/i))) as HTMLTextAreaElement;
+    assert.ok(screen.getByText(/New comment on a\.ts line 2 \(right\)/i));
+    fireEvent.input(textarea, { target: { value: "check this addition" } });
+    fireEvent.click(screen.getByRole("button", { name: /^Save$/ }));
+
+    await waitFor(() => screen.getByText("1 comment"));
+    fireEvent.click(screen.getByRole("button", { name: /Submit review/i }));
+    await waitFor(() => screen.getByText(/Review sent to pi/i));
+
+    const submits = stub.calls.filter((c) => c.url === "/api/submit");
+    assert.equal(submits.length, 1);
+    const body = JSON.parse((submits[0]?.init?.body as string) ?? "") as SubmitPayload;
+    assert.deepEqual(body.comments, [
+      {
+        kind: "line",
+        filePath: "a.ts",
+        side: "right",
+        startLine: 2,
+        endLine: 2,
+        body: "check this addition",
+      },
+    ]);
+  });
+
+  it("submits a dragged line-comment range", async () => {
+    stub = defaultResponder();
+    const { container } = render(<App />);
+    await waitFor(() => screen.getByRole("button", { name: /Comment on this file/i }));
+
+    const start = container.querySelector('[data-line-id="0:right:2"]');
+    const end = container.querySelector('[data-line-id="0:right:3"]');
+    assert.ok(start, "expected right-side gutter for line 2");
+    assert.ok(end, "expected right-side gutter for line 3");
+    fireEvent.mouseDown(start, { button: 0 });
+    fireEvent.mouseEnter(end);
+    fireEvent.mouseUp(window);
+
+    const textarea = (await waitFor(() =>
+      screen.getByPlaceholderText(/Leave a comment/i))) as HTMLTextAreaElement;
+    assert.ok(screen.getByText(/New comment on a\.ts lines 2-3 \(right\)/i));
+    fireEvent.input(textarea, { target: { value: "range note" } });
+    fireEvent.click(screen.getByRole("button", { name: /^Save$/ }));
+    fireEvent.click(screen.getByRole("button", { name: /Submit review/i }));
+    await waitFor(() => screen.getByText(/Review sent to pi/i));
+
+    const submits = stub.calls.filter((c) => c.url === "/api/submit");
+    const body = JSON.parse((submits[0]?.init?.body as string) ?? "") as SubmitPayload;
+    assert.deepEqual(body.comments, [
+      {
+        kind: "line",
+        filePath: "a.ts",
+        side: "right",
+        startLine: 2,
+        endLine: 3,
+        body: "range note",
+      },
+    ]);
+  });
+
+  it("edits and deletes a line comment", async () => {
+    stub = defaultResponder();
+    const { container } = render(<App />);
+    await waitFor(() => screen.getByRole("button", { name: /Comment on this file/i }));
+
+    const gutter = container.querySelector('[data-line-id="0:right:2"]');
+    assert.ok(gutter, "expected right-side gutter for line 2");
+    fireEvent.mouseDown(gutter, { button: 0 });
+    fireEvent.mouseUp(window);
+
+    const textarea = (await waitFor(() =>
+      screen.getByPlaceholderText(/Leave a comment/i))) as HTMLTextAreaElement;
+    fireEvent.input(textarea, { target: { value: "first draft" } });
+    fireEvent.click(screen.getByRole("button", { name: /^Save$/ }));
+    await waitFor(() => screen.getByText("first draft"));
+
+    fireEvent.click(screen.getByRole("button", { name: /Edit Comment on line 2 \(right\)/i }));
+    const editBox = (await waitFor(() =>
+      screen.getByDisplayValue("first draft"))) as HTMLTextAreaElement;
+    fireEvent.input(editBox, { target: { value: "updated draft" } });
+    fireEvent.click(screen.getByRole("button", { name: /^Save$/ }));
+    await waitFor(() => screen.getByText("updated draft"));
+
+    fireEvent.click(screen.getByRole("button", { name: /Delete Comment on line 2 \(right\)/i }));
+    await waitFor(() => assert.equal(screen.queryByText("updated draft"), null));
+    assert.equal(screen.queryByText("1 comment"), null);
+  });
+
+  it("disables line-comment edits while another composer is open", async () => {
+    stub = defaultResponder();
+    const { container } = render(<App />);
+    await waitFor(() => screen.getByRole("button", { name: /Comment on this file/i }));
+
+    const gutter = container.querySelector('[data-line-id="0:right:2"]');
+    assert.ok(gutter, "expected right-side gutter for line 2");
+    fireEvent.mouseDown(gutter, { button: 0 });
+    fireEvent.mouseUp(window);
+
+    const textarea = (await waitFor(() =>
+      screen.getByPlaceholderText(/Leave a comment/i))) as HTMLTextAreaElement;
+    fireEvent.input(textarea, { target: { value: "draft comment" } });
+    fireEvent.click(screen.getByRole("button", { name: /^Save$/ }));
+    await waitFor(() => screen.getByText("draft comment"));
+
+    const fileButton = screen.getByRole("button", { name: /Comment on this file/i });
+    fireEvent.click(fileButton);
+    await waitFor(() => screen.getByText("File-level comment on a.ts"));
+
+    const editButton = screen.getByRole("button", {
+      name: /Edit Comment on line 2 \(right\)/i,
+    }) as HTMLButtonElement;
+    assert.equal(editButton.disabled, true);
+  });
+
+  it("keeps an open composer when other comment entry points are used", async () => {
+    stub = defaultResponder();
+    const { container } = render(<App />);
+    await waitFor(() => screen.getByRole("button", { name: /Comment on this file/i }));
+
+    const fileButton = screen.getByRole("button", { name: /Comment on this file/i });
+    fireEvent.click(fileButton);
+
+    const textarea = (await waitFor(() =>
+      screen.getByPlaceholderText(/Leave a comment/i))) as HTMLTextAreaElement;
+    fireEvent.input(textarea, { target: { value: "draft comment" } });
+
+    assert.equal((fileButton as HTMLButtonElement).disabled, true);
+
+    const gutter = container.querySelector('[data-line-id="0:right:2"]');
+    assert.ok(gutter, "expected right-side gutter for line 2");
+    fireEvent.mouseDown(gutter, { button: 0 });
+    fireEvent.mouseUp(window);
+
+    assert.equal(textarea.value, "draft comment");
+    assert.ok(screen.getByText("File-level comment on a.ts"));
+    assert.equal(screen.queryByText(/New comment on a\.ts line 2 \(right\)/i), null);
   });
 
   it("fires /api/cancel and shows the discarded terminal screen on Discard", async () => {

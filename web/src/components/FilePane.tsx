@@ -48,13 +48,18 @@ export function FilePane(props: FilePaneProps): preact.JSX.Element {
 
   const closeComposer = (): void => setOpen(null);
 
+  const openComposer = (next: OpenComposer): void => {
+    if (open !== null) return;
+    setOpen(next);
+  };
+
   const startNewLineComposer = (
     hunkIdx: number,
     side: ReviewSide,
     startLine: number,
     endLine: number,
   ): void => {
-    setOpen({
+    openComposer({
       kind: "new-line",
       filePath: file.filePath,
       hunkIdx,
@@ -74,7 +79,8 @@ export function FilePane(props: FilePaneProps): preact.JSX.Element {
         <div class="file-header-actions">
           <button
             class="btn"
-            onClick={() => setOpen({ kind: "new-file", filePath: file.filePath })}
+            disabled={open !== null}
+            onClick={() => openComposer({ kind: "new-file", filePath: file.filePath })}
           >
             💬 Comment on this file
           </button>
@@ -82,7 +88,7 @@ export function FilePane(props: FilePaneProps): preact.JSX.Element {
       </header>
 
       {(fileComments.length > 0 || open?.kind === "new-file") && (
-        <div style="padding: 12px 16px; border-bottom: 1px solid var(--border-soft);">
+        <div class="file-comments">
           <div class="comment-list">
             {fileComments.map((c) =>
               open?.kind === "edit" && open.commentId === c.id ? (
@@ -100,7 +106,8 @@ export function FilePane(props: FilePaneProps): preact.JSX.Element {
                 <CommentCard
                   key={c.id}
                   comment={c}
-                  onEdit={() => setOpen({ kind: "edit", commentId: c.id })}
+                  editDisabled={open !== null}
+                  onEdit={() => openComposer({ kind: "edit", commentId: c.id })}
                   onDelete={() => props.onDeleteComment(c.id)}
                 />
               ),
@@ -119,31 +126,33 @@ export function FilePane(props: FilePaneProps): preact.JSX.Element {
         </div>
       )}
 
-      {file.hunks.map((hunk, hunkIdx) => (
-        <Hunk
-          key={hunkIdx}
-          hunk={hunk}
-          file={file}
-          fileIdx={fileIdx}
-          hunkIdx={hunkIdx}
-          comments={lineComments.filter((c) => isCommentInHunk(c, hunk))}
-          composer={open}
-          onStartNewLine={(side, startLine, endLine) =>
-            startNewLineComposer(hunkIdx, side, startLine, endLine)
-          }
-          onCancel={closeComposer}
-          onSaveNew={(body, draft) => {
-            props.onAddComment(draft, body);
-            closeComposer();
-          }}
-          onStartEdit={(id) => setOpen({ kind: "edit", commentId: id })}
-          onSaveEdit={(id, body) => {
-            props.onUpdateComment(id, body);
-            closeComposer();
-          }}
-          onDelete={(id) => props.onDeleteComment(id)}
-        />
-      ))}
+      <div class={`file-diff${open !== null ? " composer-open" : ""}`}>
+        {file.hunks.map((hunk, hunkIdx) => (
+          <Hunk
+            key={hunkIdx}
+            hunk={hunk}
+            file={file}
+            fileIdx={fileIdx}
+            hunkIdx={hunkIdx}
+            comments={lineComments.filter((c) => isCommentInHunk(c, hunk))}
+            composer={open}
+            onStartNewLine={(side, startLine, endLine) =>
+              startNewLineComposer(hunkIdx, side, startLine, endLine)
+            }
+            onCancel={closeComposer}
+            onSaveNew={(body, draft) => {
+              props.onAddComment(draft, body);
+              closeComposer();
+            }}
+            onStartEdit={(id) => openComposer({ kind: "edit", commentId: id })}
+            onSaveEdit={(id, body) => {
+              props.onUpdateComment(id, body);
+              closeComposer();
+            }}
+            onDelete={(id) => props.onDeleteComment(id)}
+          />
+        ))}
+      </div>
     </section>
   );
 }

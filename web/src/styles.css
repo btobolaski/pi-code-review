@@ -21,6 +21,9 @@
   --hl-bg: rgba(187, 128, 9, 0.18);
   --shadow: 0 2px 6px rgba(0, 0, 0, 0.08);
   --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
+  --danger: #d1242f;
+  --diff-font-size: 14px;
+  --diff-line-height: 1.5;
 }
 
 @media (prefers-color-scheme: dark) {
@@ -41,11 +44,24 @@
     --del-gutter: rgba(248, 81, 73, 0.25);
     --hl-bg: rgba(187, 128, 9, 0.25);
     --shadow: 0 2px 6px rgba(0, 0, 0, 0.5);
+    --danger: #f85149;
   }
 }
 
 * {
   box-sizing: border-box;
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
 }
 
 html,
@@ -65,6 +81,10 @@ body {
 button {
   font: inherit;
   cursor: pointer;
+}
+
+button:disabled {
+  cursor: not-allowed;
 }
 
 a {
@@ -137,6 +157,7 @@ a {
 }
 
 .main {
+  min-width: 0;
   overflow-y: auto;
   padding: 16px 24px 24px;
 }
@@ -199,6 +220,15 @@ a {
   background: var(--bg-strong);
 }
 
+.btn:disabled {
+  opacity: 0.6;
+}
+
+.btn:disabled:hover {
+  background: var(--bg);
+  filter: none;
+}
+
 .btn.primary {
   background: var(--link);
   border-color: var(--link);
@@ -209,8 +239,15 @@ a {
   filter: brightness(1.05);
 }
 
+.btn.primary:disabled,
+.btn.primary:disabled:hover {
+  background: var(--link);
+  border-color: var(--link);
+  filter: none;
+}
+
 .btn.danger {
-  color: #d1242f;
+  color: var(--danger);
 }
 
 .hunk {
@@ -221,21 +258,42 @@ a {
   border-top: none;
 }
 
+.file-comments {
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--border-soft);
+}
+
+.file-diff {
+  overflow-x: auto;
+}
+
+.file-diff.composer-open .gutter-active {
+  cursor: not-allowed;
+}
+
+.file-diff.composer-open .gutter-active:hover {
+  outline: none;
+}
+
 .hunk-header {
   background: var(--bg-soft);
   color: var(--text-soft);
   font-family: var(--mono);
-  font-size: 12px;
-  padding: 4px 12px;
+  font-size: 13px;
+  line-height: var(--diff-line-height);
+  padding: 6px 14px;
   border-bottom: 1px solid var(--border-soft);
   user-select: none;
 }
 
 .diff-table {
-  width: 100%;
+  min-width: 100%;
+  width: max-content;
   border-collapse: collapse;
   font-family: var(--mono);
-  font-size: 12px;
+  font-size: var(--diff-font-size);
+  line-height: var(--diff-line-height);
+  font-variant-numeric: tabular-nums;
 }
 
 .diff-table td {
@@ -268,13 +326,15 @@ a {
 
 .diff-row.kind-add.selected,
 .diff-row.kind-add.selected .gutter,
-.diff-row.kind-add.in-comment {
+.diff-row.kind-add.in-comment,
+.diff-row.kind-add.in-comment .gutter {
   background: var(--add-bg-strong);
 }
 
 .diff-row.kind-del.selected,
 .diff-row.kind-del.selected .gutter,
-.diff-row.kind-del.in-comment {
+.diff-row.kind-del.in-comment,
+.diff-row.kind-del.in-comment .gutter {
   background: var(--del-bg-strong);
 }
 
@@ -291,10 +351,33 @@ a {
 .gutter {
   text-align: right;
   color: var(--text-soft);
-  padding: 0 8px;
+  padding: 0 12px;
+  min-width: 4.5rem;
   width: 1%;
   white-space: nowrap;
   user-select: none;
+}
+
+.gutter-button {
+  display: block;
+  width: 100%;
+  border: none;
+  padding: 0 8px 0 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  line-height: inherit;
+  text-align: inherit;
+}
+
+.gutter-button:focus-visible {
+  outline: 1px solid var(--link);
+  outline-offset: 2px;
+}
+
+.gutter + .gutter {
+  box-shadow: inset 1px 0 0 var(--border-soft);
+  padding-left: 16px;
 }
 
 .diff-row.kind-add .gutter {
@@ -308,13 +391,14 @@ a {
 .diff-prefix {
   text-align: center;
   width: 1%;
+  min-width: 2.25rem;
   color: var(--text-soft);
   user-select: none;
-  padding: 0 4px;
+  padding: 0 10px;
 }
 
 .diff-text {
-  padding: 0 8px;
+  padding: 0 14px;
   width: auto;
 }
 
@@ -336,6 +420,7 @@ a {
 
 .comment-row td {
   padding: 12px 24px;
+  white-space: normal;
 }
 
 .comment-list {
@@ -447,7 +532,7 @@ a {
 
 .error {
   padding: 16px 24px;
-  color: #d1242f;
+  color: var(--danger);
 }
 
 .app.loading,

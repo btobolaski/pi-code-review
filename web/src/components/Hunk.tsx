@@ -57,6 +57,7 @@ export function Hunk(props: HunkProps): preact.JSX.Element {
   // Use a ref so the global mouseup listener (which closes over its initial
   // closure) always sees the latest drag value without re-binding.
   const dragRef = useRef<DragRange | null>(null);
+  const suppressGutterClickRef = useRef(false);
   dragRef.current = drag;
 
   useEffect(() => {
@@ -66,6 +67,7 @@ export function Hunk(props: HunkProps): preact.JSX.Element {
       const resolved = resolveSelection(hunk.lines, current);
       setDrag(null);
       if (resolved) {
+        suppressGutterClickRef.current = true;
         props.onStartNewLine(resolved.side, resolved.startLine, resolved.endLine);
       }
     };
@@ -116,6 +118,7 @@ export function Hunk(props: HunkProps): preact.JSX.Element {
   }, [comments, composer, hunkIdx, lineIdxByOldLine, lineIdxByNewLine]);
 
   const onGutterMouseDown = (e: MouseEvent, idx: number, side: ReviewSide): void => {
+    if (composer) return;
     if (e.button !== 0) return;
     if (!lineHasSide(hunk.lines[idx], side)) return;
     e.preventDefault();
@@ -129,6 +132,14 @@ export function Hunk(props: HunkProps): preact.JSX.Element {
     // can pick up the line back-numbers when commit happens.
     setDrag({ side, startIdx: current.startIdx, endIdx: idx });
   };
+  const onGutterClick = (side: ReviewSide, lineNumber: number): void => {
+    if (composer) return;
+    if (suppressGutterClickRef.current) {
+      suppressGutterClickRef.current = false;
+      return;
+    }
+    props.onStartNewLine(side, lineNumber, lineNumber);
+  };
 
   return (
     <div class="hunk">
@@ -136,7 +147,18 @@ export function Hunk(props: HunkProps): preact.JSX.Element {
         @@ -{hunk.oldStart},{hunk.oldLines} +{hunk.newStart},{hunk.newLines} @@
         {hunk.header ? ` ${hunk.header}` : null}
       </div>
-      <table class="diff-table">
+      <table class="diff-table" aria-label={`Diff hunk for ${file.filePath}`}>
+        <caption class="sr-only">
+          Diff hunk for {file.filePath} from old line {hunk.oldStart} to new line {hunk.newStart}
+        </caption>
+        <thead class="sr-only">
+          <tr>
+            <th scope="col">Old line</th>
+            <th scope="col">New line</th>
+            <th scope="col">Change type</th>
+            <th scope="col">Code</th>
+          </tr>
+        </thead>
         <tbody>
           {hunk.lines.map((line, idx) => {
             const rowClass =
@@ -154,7 +176,19 @@ export function Hunk(props: HunkProps): preact.JSX.Element {
                     onMouseDown={(e) => onGutterMouseDown(e as MouseEvent, idx, "left")}
                     onMouseEnter={() => onGutterMouseEnter(idx, "left")}
                   >
-                    {line.oldLine ?? ""}
+                    {line.oldLine !== null ? (
+                      <button
+                        type="button"
+                        class="gutter-button"
+                        aria-label={`Comment on left line ${line.oldLine}`}
+                        disabled={composer !== null}
+                        onClick={() => onGutterClick("left", line.oldLine as number)}
+                      >
+                        {line.oldLine}
+                      </button>
+                    ) : (
+                      ""
+                    )}
                   </td>
                   <td
                     class={`gutter${line.newLine !== null ? " gutter-active" : ""}`}
@@ -162,7 +196,19 @@ export function Hunk(props: HunkProps): preact.JSX.Element {
                     onMouseDown={(e) => onGutterMouseDown(e as MouseEvent, idx, "right")}
                     onMouseEnter={() => onGutterMouseEnter(idx, "right")}
                   >
-                    {line.newLine ?? ""}
+                    {line.newLine !== null ? (
+                      <button
+                        type="button"
+                        class="gutter-button"
+                        aria-label={`Comment on right line ${line.newLine}`}
+                        disabled={composer !== null}
+                        onClick={() => onGutterClick("right", line.newLine as number)}
+                      >
+                        {line.newLine}
+                      </button>
+                    ) : (
+                      ""
+                    )}
                   </td>
                   <td class="diff-prefix">
                     {line.kind === "add" ? "+" : line.kind === "del" ? "-" : " "}
@@ -181,6 +227,7 @@ export function Hunk(props: HunkProps): preact.JSX.Element {
                       <td colSpan={4}>
                         <CommentCard
                           comment={item.comment}
+                          editDisabled={composer !== null}
                           onEdit={() => props.onStartEdit(item.id)}
                           onDelete={() => props.onDelete(item.id)}
                         />

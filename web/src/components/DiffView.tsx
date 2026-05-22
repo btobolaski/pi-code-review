@@ -1,8 +1,14 @@
 import { useEffect, useMemo, useRef, useState } from "preact/hooks";
 
-import type { DiffFileStatus, DiffPayload } from "../../../extension/src/types";
+import type { DiffFile, DiffFileStatus, DiffPayload } from "../../../extension/src/types";
 import type { CommentDraft, StoredComment } from "../App";
-import { buildFileTree, fileName, type FileTreeNode, type SidebarFileRow } from "../lib/fileTree";
+import {
+  buildFileTree,
+  fileName,
+  flattenFileTree,
+  type FileTreeNode,
+  type SidebarFileRow,
+} from "../lib/fileTree";
 import { FilePane } from "./FilePane";
 
 export type DiffViewProps = {
@@ -15,12 +21,6 @@ export type DiffViewProps = {
 
 export function DiffView(props: DiffViewProps): preact.JSX.Element {
   const { diff, commentsByFile } = props;
-  const [activeFile, setActiveFile] = useState<string>(diff.files[0]?.filePath ?? "");
-  const [collapsedFiles, setCollapsedFiles] = useState<Set<string>>(new Set());
-  const mainRef = useRef<HTMLElement | null>(null);
-  const intersectingFilesRef = useRef<Map<string, ObservedFileSection>>(new Map());
-  const sidebarButtonRefs = useRef<Map<string, HTMLButtonElement>>(new Map());
-
   const summary = useMemo<SidebarFileRow[]>(() => {
     return diff.files.map((f) => ({
       filePath: f.filePath,
@@ -29,12 +29,30 @@ export function DiffView(props: DiffViewProps): preact.JSX.Element {
     }));
   }, [diff.files, commentsByFile]);
   const fileTree = useMemo(() => buildFileTree(summary), [summary]);
+  const filesByPath = useMemo(
+    () => new Map<string, DiffFile>(diff.files.map((file) => [file.filePath, file])),
+    [diff.files],
+  );
+  const orderedFiles = useMemo(() => {
+    const files: DiffFile[] = [];
+    for (const filePath of flattenFileTree(fileTree)) {
+      const file = filesByPath.get(filePath);
+      if (file) files.push(file);
+    }
+    return files;
+  }, [fileTree, filesByPath]);
+
+  const [activeFile, setActiveFile] = useState<string>(orderedFiles[0]?.filePath ?? "");
+  const [collapsedFiles, setCollapsedFiles] = useState<Set<string>>(new Set());
+  const mainRef = useRef<HTMLElement | null>(null);
+  const intersectingFilesRef = useRef<Map<string, ObservedFileSection>>(new Map());
+  const sidebarButtonRefs = useRef<Map<string, HTMLButtonElement>>(new Map());
 
   useEffect(() => {
     const filePaths = new Set(diff.files.map((file) => file.filePath));
     setActiveFile((current) => {
       if (current && filePaths.has(current)) return current;
-      return diff.files[0]?.filePath ?? "";
+      return orderedFiles[0]?.filePath ?? "";
     });
     setCollapsedFiles((current) => {
       let changed = false;
@@ -48,7 +66,7 @@ export function DiffView(props: DiffViewProps): preact.JSX.Element {
       }
       return changed ? next : current;
     });
-  }, [diff.files]);
+  }, [diff.files, orderedFiles]);
 
   useEffect(() => {
     const root = mainRef.current;
@@ -152,7 +170,7 @@ export function DiffView(props: DiffViewProps): preact.JSX.Element {
         </div>
       </nav>
       <main class="main" ref={mainRef}>
-        {diff.files.map((file, fileIdx) => (
+        {orderedFiles.map((file, fileIdx) => (
           <FilePane
             key={file.filePath}
             file={file}

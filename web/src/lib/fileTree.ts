@@ -46,6 +46,31 @@ export function buildFileTree(rows: ReadonlyArray<SidebarFileRow>): FileTreeNode
   return finalizeDir(root);
 }
 
+/**
+ * Flatten the sidebar tree into the same depth-first file order used by the
+ * sidebar renderer so the main review pane can stay in sync.
+ */
+export function flattenFileTree(nodes: ReadonlyArray<FileTreeNode>): string[] {
+  const filePaths: string[] = [];
+
+  const visit = (node: FileTreeNode): void => {
+    if (node.kind === "file") {
+      filePaths.push(node.row.filePath);
+      return;
+    }
+
+    for (const child of node.children) {
+      visit(child);
+    }
+  };
+
+  for (const node of nodes) {
+    visit(node);
+  }
+
+  return filePaths;
+}
+
 function createMutableDir(): MutableDir {
   return {
     files: [],

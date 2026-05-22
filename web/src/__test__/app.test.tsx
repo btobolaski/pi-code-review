@@ -110,6 +110,35 @@ const nestedSidebarDiff: DiffPayload = {
   ],
 };
 
+const unorderedSidebarDiff: DiffPayload = {
+  vcs: "jj",
+  revset: "@",
+  cwd: "/r",
+  files: [
+    {
+      oldPath: "web/src/App.tsx",
+      newPath: "web/src/App.tsx",
+      filePath: "web/src/App.tsx",
+      status: "modified",
+      hunks: [],
+    },
+    {
+      oldPath: "README.md",
+      newPath: "README.md",
+      filePath: "README.md",
+      status: "modified",
+      hunks: [],
+    },
+    {
+      oldPath: "extension/src/command.ts",
+      newPath: "extension/src/command.ts",
+      filePath: "extension/src/command.ts",
+      status: "modified",
+      hunks: [],
+    },
+  ],
+};
+
 const duplicateBasenameDiff: DiffPayload = {
   vcs: "jj",
   revset: "@",
@@ -329,6 +358,35 @@ describe("App", () => {
         ariaHidden: "true",
       },
     ]);
+  });
+
+  it("renders file panes in the same order as the sidebar tree", async () => {
+    stub = defaultResponder({ diff: unorderedSidebarDiff });
+    const { container } = render(<App />);
+
+    await waitFor(() => screen.getByRole("button", { name: "README.md modified" }));
+
+    const sidebarOrder = [...container.querySelectorAll("nav.sidebar .sidebar-file")].map((node) =>
+      node.getAttribute("aria-label"),
+    );
+    const filePaneOrder = [...container.querySelectorAll("main.main .file-header-path")].map((node) =>
+      node.textContent,
+    );
+
+    assert.deepEqual(sidebarOrder, [
+      "README.md modified",
+      "extension/src/command.ts modified",
+      "web/src/App.tsx modified",
+    ]);
+    assert.deepEqual(filePaneOrder, [
+      "README.md",
+      "extension/src/command.ts",
+      "web/src/App.tsx",
+    ]);
+    assert.equal(
+      screen.getByRole("button", { name: "README.md modified" }).classList.contains("active"),
+      true,
+    );
   });
 
   it("gives duplicate sidebar basenames distinct accessible labels", async () => {

@@ -1,7 +1,7 @@
 import { strict as assert } from "node:assert";
 import { describe, it } from "node:test";
 
-import { buildFileTree } from "../lib/fileTree";
+import { buildFileTree, flattenFileTree } from "../lib/fileTree";
 
 describe("buildFileTree", () => {
   it("returns an empty tree for no rows", () => {
@@ -125,5 +125,62 @@ describe("buildFileTree", () => {
         },
       ],
     );
+  });
+});
+
+describe("flattenFileTree", () => {
+  it("returns an empty list for no nodes", () => {
+    assert.deepEqual(flattenFileTree([]), []);
+  });
+
+  it("returns the path for a single root file", () => {
+    assert.deepEqual(
+      flattenFileTree([
+        {
+          kind: "file",
+          row: { filePath: "README.md", status: "modified", count: 0 },
+        },
+      ]),
+      ["README.md"],
+    );
+  });
+
+  it("returns sibling files in alphabetical basename order", () => {
+    const tree = buildFileTree([
+      { filePath: "extension/src/diff.ts", status: "modified", count: 0 },
+      { filePath: "extension/src/command.ts", status: "modified", count: 0 },
+    ]);
+
+    assert.deepEqual(flattenFileTree(tree), ["extension/src/command.ts", "extension/src/diff.ts"]);
+  });
+
+  it("returns files before sub-directories recursively", () => {
+    const tree = buildFileTree([
+      { filePath: "extension/src/z-last.ts", status: "modified", count: 0 },
+      { filePath: "extension/index.ts", status: "added", count: 0 },
+      { filePath: "extension/docs/README.md", status: "modified", count: 0 },
+      { filePath: "extension/src/command.ts", status: "modified", count: 0 },
+    ]);
+
+    assert.deepEqual(flattenFileTree(tree), [
+      "extension/index.ts",
+      "extension/docs/README.md",
+      "extension/src/command.ts",
+      "extension/src/z-last.ts",
+    ]);
+  });
+
+  it("matches the sidebar DFS order for non-alphabetical diff input", () => {
+    const tree = buildFileTree([
+      { filePath: "web/src/App.tsx", status: "modified", count: 0 },
+      { filePath: "README.md", status: "modified", count: 0 },
+      { filePath: "extension/src/command.ts", status: "modified", count: 0 },
+    ]);
+
+    assert.deepEqual(flattenFileTree(tree), [
+      "README.md",
+      "extension/src/command.ts",
+      "web/src/App.tsx",
+    ]);
   });
 });

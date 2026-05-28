@@ -16,8 +16,10 @@ Start with `README.md` for the user-facing workflow and expected behavior.
 
 ## Repository layout
 
-- `extension/index.ts`: extension entrypoint that wires the command dependencies together
-- `extension/src/command.ts`: `/code-review` command lifecycle and session cleanup
+- `extension/index.ts`: Pi extension entrypoint that wires the command dependencies together
+- `extension/cli.ts`: host-agnostic CLI entrypoint (used by the Claude Code slash command and humans)
+- `extension/src/command.ts`: `/code-review` command lifecycle and session cleanup (Pi-specific)
+- `extension/src/cli.ts`: CLI orchestrator with the same shape as `command.ts` but no Pi dependency
 - `extension/src/diff.ts`: repo root detection, jj/git selection, and unified-diff parsing
 - `extension/src/server.ts`: local API/static server for the review UI
 - `extension/src/format.ts`: submitted review -> markdown follow-up formatting
@@ -25,6 +27,7 @@ Start with `README.md` for the user-facing workflow and expected behavior.
 - `web/src/App.tsx`: top-level review UI state machine
 - `web/src/components/`: diff rendering, selection, and comment UI
 - `web/src/lib/`: small frontend helpers such as API access, selection, syntax highlighting, and language detection
+- `scripts/install-claude.sh`: renders `~/.claude/commands/code-review.md` with absolute paths into this checkout
 - `extension/src/__test__/` and `web/src/__test__/`: test suites
 
 ## Tooling and workflow

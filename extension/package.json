@@ -8,6 +8,7 @@
     "extensions": ["./index.ts"]
   },
   "scripts": {
+    "code-review": "node --import tsx ./cli.ts",
     "test": "node --import tsx --test src/__test__/*.test.ts",
     "typecheck": "tsc --noEmit"
   },

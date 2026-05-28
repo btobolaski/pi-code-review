@@ -24,6 +24,8 @@ pnpm --filter web build
 
 ## Usage
 
+### Pi
+
 Point pi at the extension once:
 
 ```bash
@@ -39,6 +41,32 @@ Inside an interactive Pi session:
 /code-review @-           # jj: parent of the working copy
 /code-review main..@      # git: range
 ```
+
+### Claude Code
+
+Install the `/code-review` slash command into `~/.claude/commands/`:
+
+```bash
+bash scripts/install-claude.sh             # install
+bash scripts/install-claude.sh --uninstall # remove
+```
+
+The installer renders the command file with absolute paths into this checkout, so re-run it after moving or
+re-cloning the repo. Override the destination with `CLAUDE_COMMANDS_DIR=/path/to/commands` if you want a
+project-scoped install instead of the global one.
+
+Then, from any jj/git working copy:
+
+```
+/code-review              # default revset
+/code-review @-           # jj parent
+/code-review main..@      # git range
+```
+
+Under the hood the slash command invokes `extension/cli.ts`, which is host-agnostic: it acquires the diff,
+starts the same local review server, blocks on submit/cancel, and prints the formatted markdown to stdout.
+Claude Code's `!`-substitution then sends that stdout as your next user message. On cancel or an empty review
+the script emits a `_(... — disregard this turn)_` sentinel so Claude knows no follow-up was requested.
 
 Pi prints the URL of the local review server and tries to open your default browser. Leave comments, write an optional
 overall summary, then click **Submit review** to send the formatted markdown to the next agent turn, or **Discard** to
@@ -57,8 +85,9 @@ you scroll, the sidebar scrolls just enough to keep that row visible.
    [`parse-diff`](https://www.npmjs.com/package/parse-diff).
 3. It starts a `node:http` server on `127.0.0.1` (random port, or `PI_CODE_REVIEW_PORT` if set) and serves the built
    `web/` SPA at `/`, plus three API routes: `GET /api/diff`, `POST /api/submit`, `POST /api/cancel`.
-4. On submit, comments are formatted into a single markdown follow-up message and sent via
-   `pi.sendUserMessage(..., { deliverAs: "followUp" })`.
+4. On submit, comments are formatted into a single markdown follow-up message. Pi delivers it via
+   `pi.sendUserMessage(..., { deliverAs: "followUp" })`; the Claude Code path prints the same markdown to
+   stdout, which the slash command's `!`-substitution turns into the next user message.
 
 The submit payload looks like:
 

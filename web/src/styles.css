@@ -360,6 +360,12 @@ a {
 
 .file-diff {
   overflow-x: auto;
+  /*
+   * Establish an inline-size container so comment rows can size themselves to
+   * the visible viewport width (100cqi) instead of contributing to the
+   * max-content width of the diff table.
+   */
+  container-type: inline-size;
 }
 
 .file-diff.composer-open .gutter-active {
@@ -514,8 +520,24 @@ a {
 }
 
 .comment-row td {
-  padding: 12px 24px;
+  --comment-row-padding-x: 24px;
+  padding: 12px var(--comment-row-padding-x);
   white-space: normal;
+}
+
+/*
+ * The diff table is sized to max-content so code lines can scroll
+ * horizontally. Comment rows span the full table width, so without this they
+ * would stretch the table to fit their longest line (forcing horizontal
+ * scrolling for saved comments). Pin the comment content to the left edge of
+ * the scroll viewport and size it to the visible container width so it wraps
+ * like the edit composer already does.
+ */
+.comment-row td > * {
+  position: sticky;
+  left: 0;
+  width: calc(100cqi - 2 * var(--comment-row-padding-x));
+  box-sizing: border-box;
 }
 
 .comment-list {

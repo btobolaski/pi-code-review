@@ -1,6 +1,5 @@
 .direnv
 node_modules/
-dist/
 .vite/
 *.log
 *.tsbuildinfo

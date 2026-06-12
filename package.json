@@ -3,8 +3,14 @@
   "private": true,
   "version": "0.0.0",
   "description": "Pi extension that opens a local web review UI for jj/git diffs.",
+  "pi": {
+    "extensions": [
+      "extension/index.ts"
+    ]
+  },
   "scripts": {
     "build": "pnpm --filter web build",
+    "postinstall": "pnpm --filter web build",
     "dev": "pnpm --filter web dev",
     "test": "pnpm -r --workspace-concurrency=1 run test",
     "typecheck": "pnpm -r run typecheck"

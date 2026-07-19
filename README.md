@@ -51,9 +51,9 @@ bash scripts/install-claude.sh             # install
 bash scripts/install-claude.sh --uninstall # remove
 ```
 
-The installer renders the command file with absolute paths into this checkout, so re-run it after moving or
-re-cloning the repo. Override the destination with `CLAUDE_COMMANDS_DIR=/path/to/commands` if you want a
-project-scoped install instead of the global one.
+The installer renders the command file with absolute paths into this checkout, so re-run it after moving or re-cloning
+the repo. Override the destination with `CLAUDE_COMMANDS_DIR=/path/to/commands` if you want a project-scoped install
+instead of the global one.
 
 Then, from any jj/git working copy:
 
@@ -63,20 +63,21 @@ Then, from any jj/git working copy:
 /code-review main..@      # git range
 ```
 
-Under the hood the slash command invokes `extension/cli.ts`, which is host-agnostic: it acquires the diff,
-starts the same local review server, blocks on submit/cancel, and prints the formatted markdown to stdout.
-Claude Code's `!`-substitution then sends that stdout as your next user message. On cancel or an empty review
-the script emits a `_(... — disregard this turn)_` sentinel so Claude knows no follow-up was requested.
+Under the hood the slash command invokes `extension/cli.ts`, which is host-agnostic: it acquires the diff, starts the
+same local review server, blocks on submit/cancel, and prints the formatted markdown to stdout. Claude Code's
+`!`-substitution then sends that stdout as your next user message. On cancel or an empty review the script emits a
+`_(... — disregard this turn)_` sentinel so Claude knows no follow-up was requested.
 
 Pi prints the URL of the local review server and tries to open your default browser. Leave comments, write an optional
-overall summary, then click **Submit review** to send the formatted markdown to the next agent turn, or **Discard** to
-cancel the review without sending a follow-up message. After either action, the review tab shows a short confirmation
-message and tries to close itself after 3 seconds. The review sidebar groups changed files into a directory tree, uses
-`+`, `-`, and `~` glyphs for added, deleted, and modified/renamed files, and keeps the active file highlight synced to
-the file currently pinned at the top of the review pane. Clicking a file header collapses or expands that file's diff
-while leaving any file-level comments visible, except while a line-comment composer or line-comment edit is open, and
-clicking the same file in the sidebar always re-expands it and scrolls it into view. When the active file changes while
-you scroll, the sidebar scrolls just enough to keep that row visible.
+overall summary, then click **Submit review** to send the formatted markdown to the next agent turn, **Discard** to
+cancel the review without sending a follow-up message, or **Download** to save a local copy as `code-review.md` without
+submitting or discarding. After either action, the review tab shows a short confirmation message and tries to close
+itself after 3 seconds. The review sidebar groups changed files into a directory tree, uses `+`, `-`, and `~` glyphs for
+added, deleted, and modified/renamed files, and keeps the active file highlight synced to the file currently pinned at
+the top of the review pane. Clicking a file header collapses or expands that file's diff while leaving any file-level
+comments visible, except while a line-comment composer or line-comment edit is open, and clicking the same file in the
+sidebar always re-expands it and scrolls it into view. When the active file changes while you scroll, the sidebar
+scrolls just enough to keep that row visible.
 
 ## How it works
 
@@ -86,8 +87,8 @@ you scroll, the sidebar scrolls just enough to keep that row visible.
 3. It starts a `node:http` server on `127.0.0.1` (random port, or `PI_CODE_REVIEW_PORT` if set) and serves the built
    `web/` SPA at `/`, plus three API routes: `GET /api/diff`, `POST /api/submit`, `POST /api/cancel`.
 4. On submit, comments are formatted into a single markdown follow-up message. Pi delivers it via
-   `pi.sendUserMessage(..., { deliverAs: "followUp" })`; the Claude Code path prints the same markdown to
-   stdout, which the slash command's `!`-substitution turns into the next user message.
+   `pi.sendUserMessage(..., { deliverAs: "followUp" })`; the Claude Code path prints the same markdown to stdout, which
+   the slash command's `!`-substitution turns into the next user message.
 
 The submit payload looks like:
 
@@ -135,8 +136,8 @@ The code-block fence grows automatically so embedded triple-backticks don't brea
 - `web/dist/` missing — the command short-circuits with an error pointing at the build command. The HTTP server is never
   started.
 - No changes for the chosen revset — the command notifies and exits.
-- Submit review stays disabled until you add at least one comment or a non-empty overall summary. If an empty payload
-  somehow still reaches the extension, nothing is sent to the agent.
+- Submit review and Download stay disabled until you add at least one comment or a non-empty overall summary. If an
+  empty payload somehow still reaches the extension, nothing is sent to the agent.
 - Browser closed without submitting — `beforeunload` fires `/api/cancel`, the extension stops waiting, no agent message.
 - Non-interactive Pi mode (`-p`) — command short-circuits with a notice.
 

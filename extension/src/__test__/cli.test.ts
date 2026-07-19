@@ -1,13 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
-import {
-  CANCEL_NOTICE,
-  EMPTY_NOTICE,
-  NO_CHANGES_NOTICE,
-  runCli,
-  type CliDeps,
-} from "../cli.js";
+import { CANCEL_NOTICE, EMPTY_NOTICE, NO_CHANGES_NOTICE, runCli, type CliDeps } from "../cli.js";
 import type { ReviewDecision, ReviewSession } from "../server.js";
 import type { DiffPayload, SubmitPayload } from "../types.js";
 

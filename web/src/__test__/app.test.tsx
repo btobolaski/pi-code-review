@@ -1059,4 +1059,109 @@ describe("App", () => {
     assert.equal(screen.queryByText(/Review sent to pi/i), null);
     assert.equal(screen.queryByText(/Review discarded/i), null);
   });
+
+  it("shows a disabled Download button when there is no content", async () => {
+    stub = defaultResponder();
+    render(<App />);
+    await waitFor(() => screen.getByRole("button", { name: /Comment on this file/i }));
+
+    const downloadBtn = screen.getByRole("button", { name: /^Download$/ });
+    assert.equal((downloadBtn as HTMLButtonElement).disabled, true);
+  });
+
+  it("enables the Download button after a comment is added", async () => {
+    stub = defaultResponder();
+    render(<App />);
+    await waitFor(() => screen.getByRole("button", { name: /Comment on this file/i }));
+
+    const downloadBtn = screen.getByRole("button", { name: /^Download$/ });
+    assert.equal((downloadBtn as HTMLButtonElement).disabled, true);
+
+    fireEvent.click(screen.getByRole("button", { name: /Comment on this file/i }));
+    const textarea = (await waitFor(() =>
+      screen.getByPlaceholderText(/Leave a comment/i))) as HTMLTextAreaElement;
+    fireEvent.input(textarea, { target: { value: "download test" } });
+    fireEvent.click(screen.getByRole("button", { name: /^Save$/ }));
+    await waitFor(() => screen.getByText("download test"));
+
+    assert.equal((downloadBtn as HTMLButtonElement).disabled, false);
+  });
+
+  it("enables the Download button when a non-empty summary is present", async () => {
+    stub = defaultResponder();
+    render(<App />);
+    await waitFor(() => screen.getByRole("button", { name: /Comment on this file/i }));
+
+    const downloadBtn = screen.getByRole("button", { name: /^Download$/ });
+    assert.equal((downloadBtn as HTMLButtonElement).disabled, true);
+
+    const summary = screen.getByPlaceholderText(/Overall review summary/i);
+    fireEvent.input(summary, { target: { value: "summary only" } });
+    assert.equal((downloadBtn as HTMLButtonElement).disabled, false);
+
+    fireEvent.input(summary, { target: { value: "   " } });
+    assert.equal((downloadBtn as HTMLButtonElement).disabled, true);
+  });
+
+  it("clicking Download does not submit or cancel and stays in active view", async () => {
+    const originalCreateObjectURL = URL.createObjectURL;
+    const originalRevokeObjectURL = URL.revokeObjectURL;
+    const createObjectURLCalls: Blob[] = [];
+    const revokeObjectURLCalls: string[] = [];
+    let clickedAnchor: HTMLAnchorElement | null = null;
+    const AnchorProto = Object.getPrototypeOf(document.createElement("a")) as typeof HTMLAnchorElement.prototype;
+    const originalClick = AnchorProto.click;
+
+    URL.createObjectURL = (blob: Blob) => {
+      createObjectURLCalls.push(blob);
+      return "blob:fake-url";
+    };
+    URL.revokeObjectURL = (url: string) => {
+      revokeObjectURLCalls.push(url);
+    };
+    AnchorProto.click = function (this: HTMLAnchorElement) {
+      clickedAnchor = this;
+    };
+
+    try {
+      stub = defaultResponder();
+      render(<App />);
+      await waitFor(() => screen.getByRole("button", { name: /Comment on this file/i }));
+
+      fireEvent.click(screen.getByRole("button", { name: /Comment on this file/i }));
+      const textarea = (await waitFor(() =>
+        screen.getByPlaceholderText(/Leave a comment/i))) as HTMLTextAreaElement;
+      fireEvent.input(textarea, { target: { value: "download me" } });
+      fireEvent.click(screen.getByRole("button", { name: /^Save$/ }));
+      await waitFor(() => screen.getByText("download me"));
+
+      fireEvent.click(screen.getByRole("button", { name: /^Download$/ }));
+
+      assert.equal(createObjectURLCalls.length, 1);
+      const blobText = await createObjectURLCalls[0]!.text();
+      assert.ok(blobText.includes("download me"), "Blob should contain comment text");
+      assert.ok(
+        blobText.includes("# Code review"),
+        "Blob should contain the markdown heading",
+      );
+
+      assert.ok(clickedAnchor, "expected anchor click");
+      assert.equal((clickedAnchor as HTMLAnchorElement).download, "code-review.md");
+      assert.equal((clickedAnchor as HTMLAnchorElement).href, "blob:fake-url");
+
+      assert.deepEqual(revokeObjectURLCalls, ["blob:fake-url"]);
+
+      assert.ok(screen.getByRole("button", { name: /Submit review/i }));
+      assert.ok(screen.getByRole("button", { name: /^Discard$/ }));
+      assert.equal(screen.queryByText(/Review sent to pi/i), null);
+      assert.equal(screen.queryByText(/Review discarded/i), null);
+
+      assert.equal(stub.calls.filter((c) => c.url === "/api/submit").length, 0);
+      assert.equal(stub.calls.filter((c) => c.url === "/api/cancel").length, 0);
+    } finally {
+      URL.createObjectURL = originalCreateObjectURL;
+      URL.revokeObjectURL = originalRevokeObjectURL;
+      AnchorProto.click = originalClick;
+    }
+  });
 });

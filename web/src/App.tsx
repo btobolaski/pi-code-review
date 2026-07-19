@@ -5,6 +5,7 @@ import type {
   DiffPayload,
   ReviewSide,
 } from "../../extension/src/types";
+import { formatPayload } from "../../extension/src/format";
 import { cancelReview, fetchDiff, submitReview } from "./lib/api";
 import { DiffView } from "./components/DiffView";
 import { ReviewSummary } from "./components/ReviewSummary";
@@ -93,14 +94,21 @@ export function App(): preact.JSX.Element {
     setComments((cs) => cs.filter((c) => c.id !== id));
   };
 
+  const buildSubmitPayload = (): { summary?: string; comments: Comment[] } => {
+    // Strip the synthetic `id` before constructing the payload; the
+    // extension only knows about the wire-shape Comment.
+    const stripped: Comment[] = comments.map(
+      ({ id: _id, ...rest }) => rest as Comment,
+    );
+    const summaryValue = summary.trim() || undefined;
+    return { summary: summaryValue, comments: stripped };
+  };
+
   const handleSubmit = async (): Promise<void> => {
     if (submittingRef.current || terminalRef.current !== "active") return;
     setSubmittingSync(true);
     try {
-      // Strip the synthetic `id` before sending; the extension only knows
-      // about the wire-shape Comment.
-      const stripped: Comment[] = comments.map(({ id: _id, ...rest }) => rest as Comment);
-      await submitReview({ summary: summary.trim() || undefined, comments: stripped });
+      await submitReview(buildSubmitPayload());
       setTerminalSync("submitted");
     } catch (err) {
       setFatal(`Failed to submit: ${err instanceof Error ? err.message : String(err)}`);
@@ -113,6 +121,21 @@ export function App(): preact.JSX.Element {
     if (terminalRef.current !== "active" || submittingRef.current) return;
     cancelReview();
     setTerminalSync("discarded");
+  };
+
+  const handleDownload = (): void => {
+    if (!diff) return;
+    const md = formatPayload(buildSubmitPayload(), diff);
+    if (md === null) return;
+    const blob = new Blob([md], { type: "text/markdown;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "code-review.md";
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
   };
 
   const commentsByFile = useMemo(() => groupByFile(comments), [comments]);
@@ -159,6 +182,7 @@ export function App(): preact.JSX.Element {
         onChangeSummary={setSummary}
         onSubmit={handleSubmit}
         onDiscard={handleDiscard}
+        onDownload={handleDownload}
         submitting={submitting}
       />
     </div>

@@ -4,12 +4,14 @@ export type ReviewSummaryProps = {
   onChangeSummary: (value: string) => void;
   onSubmit: () => void | Promise<void>;
   onDiscard: () => void;
+  onDownload: () => void;
   submitting: boolean;
 };
 
 export function ReviewSummary(props: ReviewSummaryProps): preact.JSX.Element {
   const canSubmit =
     !props.submitting && (props.commentCount > 0 || props.summary.trim() !== "");
+  const canDownload = props.commentCount > 0 || props.summary.trim() !== "";
 
   return (
     <div class="submit-bar">
@@ -29,6 +31,9 @@ export function ReviewSummary(props: ReviewSummaryProps): preact.JSX.Element {
               : `${props.commentCount} comments`}
         </div>
         <div class="submit-bar-buttons">
+          <button class="btn" onClick={props.onDownload} disabled={!canDownload}>
+            Download
+          </button>
           <button class="btn" onClick={props.onDiscard} disabled={props.submitting}>
             Discard
           </button>

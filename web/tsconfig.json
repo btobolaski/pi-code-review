@@ -10,5 +10,5 @@
       "preact/jsx-runtime": ["./node_modules/preact/jsx-runtime"]
     }
   },
-  "include": ["src/**/*.ts", "src/**/*.tsx", "../extension/src/types.ts"]
+  "include": ["src/**/*.ts", "src/**/*.tsx", "../extension/src/types.ts", "../extension/src/format.ts"]
 }
